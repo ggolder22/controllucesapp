@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ControlLuces WiFi</title>
+<style>
+/* ===== VARIABLES DE TEMA ===== */
+:root {
+  --bg: #0d1117;
+  --bg2: #161b22;
+  --bg3: #21262d;
+  --card: #1c2128;
+  --card2: #252b33;
+  --border: rgba(255,255,255,0.08);
+  --text: #e6edf3;
+  --text2: #8b949e;
+  --accent: #58a6ff;
+  --accent2: #388bfd;
+  --on: #3fb950;
+  --off: #484f58;
+  --warn: #d29922;
+  --danger: #f85149;
+  --shadow: 0 4px 24px rgba(0,0,0,0.5);
+  --radius: 14px;
+  --radius-sm: 8px;
+  --transition: all 0.22s ease;
+}
+[data-theme="light"] {
+  --bg: #f6f8fa;
+  --bg2: #eaeef2;
+  --bg3: #d8dee4;
+  --card: #ffffff;
+  --card2: #f6f8fa;
+  --border: rgba(0,0,0,0.1);
+  --text: #24292f;
+  --text2: #57606a;
+  --accent: #0969da;
+  --accent2: #0860ca;
+  --on: #2da44e;
+  --off: #d0d7de;
+  --warn: #9a6700;
+  --shadow: 0 4px 24px rgba(0,0,0,0.12);
+}
+
+/* ===== RESET Y BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100%;
+  transition: background 0.3s, color 0.3s;
+  overflow-x: hidden;
+}
+body.has-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--bg-img) center/cover no-repeat;
+  opacity: 0.15;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ===== LAYOUT PRINCIPAL ===== */
+#app { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+/* ===== HEADER ===== */
+header {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+}
+.logo { font-size: 22px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.logo span { color: var(--text2); font-weight: 400; font-size: 14px; margin-left: 4px; }
+.header-spacer { flex: 1; }
+#clock { font-size: 14px; color: var(--text2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#status-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--off); border: 2px solid var(--bg2);
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+#status-dot.online { background: var(--on); box-shadow: 0 0 8px var(--on); }
+#status-text { font-size: 12px; color: var(--text2); white-space: nowrap; }
+.header-btn {
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius-sm);
+  padding: 6px 10px; cursor: pointer; font-size: 16px;
+  transition: var(--transition); flex-shrink: 0;
+}
+.header-btn:hover { background: var(--card); }
+
+/* ===== NAVEGACIÓN DE PESTAÑAS ===== */
+nav {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+nav::-webkit-scrollbar { display: none; }
+.tab-btn {
+  background: none; border: none; color: var(--text2);
+  padding: 12px 20px; cursor: pointer; font-size: 14px; font-weight: 500;
+  white-space: nowrap; border-bottom: 2px solid transparent;
+  transition: var(--transition);
+}
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-btn:hover:not(.active) { color: var(--text); }
+
+/* ===== CONTENIDO DE PESTAÑAS ===== */
+main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ===== SECCIÓN TÍTULO ===== */
+.section-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px;
+}
+.section-header h2 { font-size: 18px; font-weight: 600; }
+.section-header .subtitle { font-size: 13px; color: var(--text2); }
+.ml-auto { margin-left: auto; }
+
+/* ===== BOTONES ===== */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-sm); border: none;
+  cursor: pointer; font-size: 14px; font-weight: 500;
+  transition: var(--transition); text-decoration: none;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--card); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { opacity: 0.85; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-icon { padding: 6px 8px; border-radius: var(--radius-sm); }
+
+/* ===== GRILLA DE CANALES ===== */
+.channels-toolbar {
+  display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.channels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.channel-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex; flex-direction: column; gap: 14px;
+  transition: var(--transition);
+  cursor: default;
+}
+.channel-card.on { border-color: var(--on); box-shadow: 0 0 0 1px var(--on), var(--shadow); }
+.channel-card-top { display: flex; align-items: center; gap: 12px; }
+.channel-icon {
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; background: var(--bg3);
+  border: 2px solid var(--border); flex-shrink: 0;
+  transition: var(--transition);
+}
+.channel-card.on .channel-icon { background: rgba(63,185,80,0.15); border-color: var(--on); }
+.channel-name-wrap { flex: 1; min-width: 0; }
+.channel-name {
+  font-weight: 600; font-size: 15px;
+  background: none; border: none; color: var(--text);
+  width: 100%; cursor: text; padding: 2px 4px; margin: -2px -4px;
+  border-radius: 4px; outline: none;
+}
+.channel-name:focus { background: var(--bg3); }
+.channel-id { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.channel-toggle-row { display: flex; align-items: center; gap: 10px; }
+.channel-status { font-size: 13px; color: var(--text2); flex: 1; }
+.channel-status.on { color: var(--on); font-weight: 600; }
+
+/* Toggle switch */
+.toggle {
+  position: relative; display: inline-block;
+  width: 50px; height: 26px; flex-shrink: 0;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0;
+  background: var(--off); border-radius: 26px;
+  cursor: pointer; transition: var(--transition);
+}
+.toggle-slider::before {
+  content: ''; position: absolute;
+  height: 20px; width: 20px; left: 3px; bottom: 3px;
+  background: white; border-radius: 50%; transition: var(--transition);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+.toggle input:checked + .toggle-slider { background: var(--on); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(24px); }
+.pulse-btn {
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text2); border-radius: var(--radius-sm);
+  padding: 4px 8px; cursor: pointer; font-size: 11px;
+  transition: var(--transition);
+}
+.pulse-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ===== ESCENAS ===== */
+.scenes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.scene-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.scene-card-top { display: flex; align-items: flex-start; gap: 10px; }
+.scene-emoji { font-size: 28px; line-height: 1; }
+.scene-info { flex: 1; min-width: 0; }
+.scene-name { font-weight: 600; font-size: 15px; }
+.scene-desc { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.scene-channels { display: flex; flex-wrap: wrap; gap: 4px; }
+.scene-ch-tag {
+  font-size: 11px; padding: 2px 7px; border-radius: 10px;
+  background: var(--bg3);
+}
+.scene-ch-tag.on { background: rgba(63,185,80,0.2); color: var(--on); }
+.scene-actions { display: flex; gap: 6px; }
+.scene-time-badge {
+  font-size: 11px; color: var(--warn);
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* ===== MODAL ===== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  z-index: 200; display: flex; align-items: center; justify-content: center;
+  padding: 20px; backdrop-filter: blur(4px);
+}
+.modal-overlay.hidden { display: none; }
+.modal {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px; width: 100%;
+  max-width: 500px; max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.modal h3 { font-size: 17px; font-weight: 700; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+/* Form elements */
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-label { font-size: 13px; font-weight: 500; color: var(--text2); }
+.form-input, .form-select {
+  background: var(--bg2); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius-sm);
+  padding: 9px 12px; font-size: 14px; outline: none;
+  transition: var(--transition); width: 100%;
+}
+.form-input:focus, .form-select:focus { border-color: var(--accent); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Checkboxes de canales en modal escena */
+.ch-checkboxes {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.ch-check-item {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 10px; cursor: pointer;
+}
+.ch-check-item input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+.ch-check-item.on { border-color: var(--on); background: rgba(63,185,80,0.08); }
+.ch-icon-label { font-size: 16px; }
+.ch-name-label { font-size: 13px; }
+
+/* ===== AUTOMATIZACIÓN ===== */
+.auto-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+@media (max-width: 680px) { .auto-grid { grid-template-columns: 1fr; } }
+.info-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px;
+}
+.info-card h3 { font-size: 14px; font-weight: 600; color: var(--text2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.sun-display {
+  display: flex; gap: 20px; margin-bottom: 16px;
+}
+.sun-item { flex: 1; text-align: center; }
+.sun-icon { font-size: 32px; }
+.sun-label { font-size: 11px; color: var(--text2); margin-top: 4px; }
+.sun-time { font-size: 20px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.sun-time.loading { color: var(--text2); font-size: 14px; }
+.auto-rules-list { display: flex; flex-direction: column; gap: 8px; }
+.auto-rule-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.auto-rule-card.enabled { border-color: var(--accent); }
+.auto-rule-info { flex: 1; }
+.auto-rule-title { font-size: 14px; font-weight: 500; }
+.auto-rule-desc { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.days-selector { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.day-btn {
+  width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text2);
+  cursor: pointer; font-size: 12px; font-weight: 500;
+  transition: var(--transition);
+}
+.day-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.log-list {
+  max-height: 140px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.log-entry { font-size: 12px; color: var(--text2); padding: 3px 0; border-bottom: 1px solid var(--border); }
+.log-entry:last-child { border: none; }
+.log-time { color: var(--accent); margin-right: 6px; }
+
+/* ===== CONFIGURACIÓN ===== */
+.settings-grid { display: flex; flex-direction: column; gap: 14px; }
+.settings-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+}
+.settings-card h3 { font-size: 14px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+.settings-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.settings-row:last-child { border: none; }
+.settings-row-label { flex: 1; }
+.settings-row-label strong { display: block; font-size: 14px; }
+.settings-row-label span { font-size: 12px; color: var(--text2); }
+.icon-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
+}
+.icon-opt {
+  aspect-ratio: 1; border-radius: var(--radius-sm);
+  background: var(--bg3); border: 2px solid transparent;
+  cursor: pointer; font-size: 20px; display: flex;
+  align-items: center; justify-content: center;
+  transition: var(--transition);
+}
+.icon-opt:hover, .icon-opt.selected { border-color: var(--accent); background: rgba(88,166,255,0.1); }
+.color-swatch {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid transparent; cursor: pointer;
+  transition: var(--transition); flex-shrink: 0;
+}
+.color-swatch.selected { border-color: var(--text); }
+.color-swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.bg-preview {
+  width: 80px; height: 50px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background-size: cover;
+  background-position: center; background-color: var(--bg3);
+  overflow: hidden; flex-shrink: 0;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 540px) {
+  header { padding: 10px 12px; gap: 8px; }
+  .logo span { display: none; }
+  main { padding: 14px; }
+  .channels-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .channel-card { padding: 12px; }
+  .channel-icon { width: 36px; height: 36px; font-size: 18px; }
+  .channel-name { font-size: 13px; }
+  .form-row { grid-template-columns: 1fr; }
+  .icon-grid { grid-template-columns: repeat(5, 1fr); }
+}
+@media (min-width: 900px) {
+  .channels-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ===== UTILIDADES ===== */
+.hidden { display: none !important; }
+.text-on { color: var(--on); }
+.text-off { color: var(--text2); }
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;
+}
+.badge-on { background: rgba(63,185,80,0.2); color: var(--on); }
+.badge-off { background: var(--bg3); color: var(--text2); }
+.divider { height: 1px; background: var(--border); margin: 4px 0; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text2); }
+.empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+.next-event {
+  background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.2);
+  border-radius: var(--radius-sm); padding: 8px 12px;
+  font-size: 13px; display: flex; align-items: center; gap: 8px;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- HEADER -->
+<header>
+  <div class="logo">💡 ControlLuces <span>WiFi 8CH</span></div>
+  <div class="header-spacer"></div>
+  <div id="next-event-header" class="next-event hidden"></div>
+  <div id="clock">--:--:--</div>
+  <div id="status-dot" title="Estado de conexión"></div>
+  <div id="status-text">Sin conexión</div>
+  <button class="header-btn" id="theme-btn" title="Cambiar tema">🌙</button>
+  <button class="header-btn" id="bg-btn" title="Fondo">🖼️</button>
+</header>
+
+<!-- NAVEGACIÓN -->
+<nav>
+  <button class="tab-btn active" data-tab="channels">⚡ Canales</button>
+  <button class="tab-btn" data-tab="scenes">🎭 Escenas</button>
+  <button class="tab-btn" data-tab="auto">🌅 Automatización</button>
+  <button class="tab-btn" data-tab="settings">⚙️ Configuración</button>
+</nav>
+
+<!-- MAIN -->
+<main>
+
+<!-- TAB: CANALES -->
+<div id="tab-channels" class="tab-content active">
+  <div class="section-header">
+    <div>
+      <h2>Canales</h2>
+      <div class="subtitle" id="channels-subtitle">8 canales · 0 encendidos</div>
+    </div>
+    <div class="channels-toolbar ml-auto">
+      <button class="btn btn-secondary btn-sm" id="btn-all-on">Todos ON</button>
+      <button class="btn btn-secondary btn-sm" id="btn-all-off">Todos OFF</button>
+    </div>
+  </div>
+  <div class="channels-grid" id="channels-grid"></div>
+</div>
+
+<!-- TAB: ESCENAS -->
+<div id="tab-scenes" class="tab-content">
+  <div class="section-header">
+    <div>
+      <h2>Escenas</h2>
+      <div class="subtitle">Configuraciones predefinidas de canales</div>
+    </div>
+    <button class="btn btn-primary ml-auto" id="btn-new-scene">+ Nueva escena</button>
+  </div>
+  <div class="scenes-grid" id="scenes-grid">
+    <div class="empty-state">
+      <div class="empty-icon">🎭</div>
+      <p>No hay escenas.<br>Crea una para empezar.</p>
+    </div>
+  </div>
+</div>
+
+<!-- TAB: AUTOMATIZACIÓN -->
+<div id="tab-auto" class="tab-content">
+  <div class="section-header">
+    <div>
+      <h2>Automatización</h2>
+      <div class="subtitle">Reglas basadas en horarios y sol</div>
+    </div>
+    <button class="btn btn-primary ml-auto" id="btn-new-rule">+ Nueva regla</button>
+  </div>
+
+  <div class="auto-grid">
+    <!-- Panel sol -->
+    <div class="info-card">
+      <h3>🌅 Datos del Sol</h3>
+      <div class="sun-display">
+        <div class="sun-item">
+          <div class="sun-icon">🌄</div>
+          <div class="sun-label">Amanecer</div>
+          <div class="sun-time loading" id="sun-rise">--:--</div>
+        </div>
+        <div class="sun-item">
+          <div class="sun-icon">🌇</div>
+          <div class="sun-label">Atardecer</div>
+          <div class="sun-time loading" id="sun-set">--:--</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ubicación</label>
+        <input class="form-input" id="loc-name" placeholder="Ej: Buenos Aires, Argentina" readonly>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <input class="form-input" id="loc-lat" placeholder="Latitud" type="number" step="0.0001">
+        <input class="form-input" id="loc-lng" placeholder="Longitud" type="number" step="0.0001">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-secondary btn-sm" id="btn-geolocate">📍 Detectar</button>
+        <button class="btn btn-primary btn-sm" id="btn-fetch-sun">🔄 Actualizar sol</button>
+      </div>
+    </div>
+
+    <!-- Log de eventos -->
+    <div class="info-card">
+      <h3>📋 Log de Eventos</h3>
+      <div class="log-list" id="event-log">
+        <div class="log-entry"><span class="log-time">--:--</span>Sistema iniciado</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px">
+    <div class="section-header">
+      <h2 style="font-size:15px">Reglas Activas</h2>
+    </div>
+    <div class="auto-rules-list" id="rules-list">
+      <div class="empty-state" style="padding:20px">
+        <p>No hay reglas. Crea una para automatizar los canales.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB: CONFIGURACIÓN -->
+<div id="tab-settings" class="tab-content">
+  <div class="section-header">
+    <h2>Configuración</h2>
+  </div>
+  <div class="settings-grid">
+
+    <!-- Conexión ESP32 -->
+    <div class="settings-card">
+      <h3>🔌 Conexión ESP32</h3>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Dirección IP del ESP32</strong>
+          <span>La IP local del módulo en tu red WiFi</span>
+        </div>
+        <input class="form-input" id="esp-ip" placeholder="192.168.1.100" style="width:160px">
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Puerto WebSocket</strong>
+          <span>Por defecto: 80</span>
+        </div>
+        <input class="form-input" id="esp-port" placeholder="80" style="width:80px" type="number">
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-primary" id="btn-connect">Conectar</button>
+        <button class="btn btn-secondary" id="btn-disconnect">Desconectar</button>
+      </div>
+    </div>
+
+    <!-- Relés activos -->
+    <div class="settings-card">
+      <h3>🔄 Tipo de Relé</h3>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Lógica de activación</strong>
+          <span>La mayoría de placas de relé son Activo Bajo</span>
+        </div>
+        <select class="form-select" id="relay-logic" style="width:auto">
+          <option value="low">Activo Bajo (NA)</option>
+          <option value="high">Activo Alto</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Iconos y nombres de canales -->
+    <div class="settings-card">
+      <h3>🏷️ Personalizar Canales</h3>
+      <div id="channel-settings-list"></div>
+    </div>
+
+    <!-- Datos / Exportar -->
+    <div class="settings-card">
+      <h3>💾 Datos</h3>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Exportar configuración</strong>
+          <span>Guarda escenas, reglas y ajustes en JSON</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btn-export">⬇️ Exportar</button>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Importar configuración</strong>
+          <span>Restaura desde un archivo JSON</span>
+        </div>
+        <label class="btn btn-secondary btn-sm" style="cursor:pointer">
+          ⬆️ Importar
+          <input type="file" accept=".json" id="btn-import" style="display:none">
+        </label>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Restablecer todo</strong>
+          <span>Borra toda la configuración local</span>
+        </div>
+        <button class="btn btn-danger btn-sm" id="btn-reset">🗑️ Resetear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main><!-- /main -->
+</div><!-- /app -->
+
+<!-- MODAL: NUEVA/EDITAR ESCENA -->
+<div class="modal-overlay hidden" id="modal-scene">
+  <div class="modal">
+    <h3 id="modal-scene-title">Nueva Escena</h3>
+    <div class="form-group">
+      <label class="form-label">Nombre</label>
+      <input class="form-input" id="scene-name-input" placeholder="Ej: Cena romántica">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Emoji / Ícono</label>
+      <div class="icon-grid" id="scene-icon-grid">
+        <!-- Se genera por JS -->
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Canales encendidos en esta escena</label>
+      <div class="ch-checkboxes" id="scene-ch-checks"></div>
+    </div>
+    <div class="divider"></div>
+    <div class="form-group">
+      <label class="form-label">⏰ Programar activación (opcional)</label>
+      <div class="form-row">
+        <input class="form-input" type="time" id="scene-time-input">
+        <div>
+          <div class="days-selector" id="scene-days">
+            <button class="day-btn" data-d="0">Do</button>
+            <button class="day-btn" data-d="1">Lu</button>
+            <button class="day-btn" data-d="2">Ma</button>
+            <button class="day-btn" data-d="3">Mi</button>
+            <button class="day-btn" data-d="4">Ju</button>
+            <button class="day-btn" data-d="5">Vi</button>
+            <button class="day-btn" data-d="6">Sa</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-scene-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="modal-scene-save">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NUEVA REGLA DE AUTOMATIZACIÓN -->
+<div class="modal-overlay hidden" id="modal-rule">
+  <div class="modal">
+    <h3 id="modal-rule-title">Nueva Regla</h3>
+    <div class="form-group">
+      <label class="form-label">Nombre</label>
+      <input class="form-input" id="rule-name-input" placeholder="Ej: Encender al atardecer">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Disparador</label>
+      <select class="form-select" id="rule-trigger">
+        <option value="sunset">Al atardecer</option>
+        <option value="sunrise">Al amanecer</option>
+        <option value="sunset_before">Antes del atardecer (minutos)</option>
+        <option value="sunset_after">Después del atardecer (minutos)</option>
+        <option value="sunrise_before">Antes del amanecer (minutos)</option>
+        <option value="sunrise_after">Después del amanecer (minutos)</option>
+        <option value="time">Hora fija</option>
+      </select>
+    </div>
+    <div class="form-group" id="rule-offset-group">
+      <label class="form-label">Minutos de diferencia</label>
+      <input class="form-input" type="number" id="rule-offset" value="30" min="1" max="240">
+    </div>
+    <div class="form-group" id="rule-time-group" style="display:none">
+      <label class="form-label">Hora</label>
+      <input class="form-input" type="time" id="rule-time-input">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Acción</label>
+      <select class="form-select" id="rule-action-type">
+        <option value="scene">Activar escena</option>
+        <option value="all_on">Encender todos</option>
+        <option value="all_off">Apagar todos</option>
+        <option value="channels">Configurar canales</option>
+      </select>
+    </div>
+    <div class="form-group" id="rule-scene-group">
+      <label class="form-label">Escena a activar</label>
+      <select class="form-select" id="rule-scene-select"></select>
+    </div>
+    <div class="form-group hidden" id="rule-channels-group">
+      <label class="form-label">Canales</label>
+      <div class="ch-checkboxes" id="rule-ch-checks"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Días activos</label>
+      <div class="days-selector" id="rule-days">
+        <button class="day-btn on" data-d="0">Do</button>
+        <button class="day-btn on" data-d="1">Lu</button>
+        <button class="day-btn on" data-d="2">Ma</button>
+        <button class="day-btn on" data-d="3">Mi</button>
+        <button class="day-btn on" data-d="4">Ju</button>
+        <button class="day-btn on" data-d="5">Vi</button>
+        <button class="day-btn on" data-d="6">Sa</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-rule-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="modal-rule-save">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: PERSONALIZAR CANAL -->
+<div class="modal-overlay hidden" id="modal-channel">
+  <div class="modal">
+    <h3>Personalizar Canal <span id="modal-ch-id"></span></h3>
+    <div class="form-group">
+      <label class="form-label">Nombre</label>
+      <input class="form-input" id="modal-ch-name" placeholder="Nombre del canal">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ícono</label>
+      <div class="icon-grid" id="modal-ch-icon-grid"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Color del indicador</label>
+      <div class="color-swatches" id="modal-ch-colors"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-ch-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="modal-ch-save">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: FONDO DE PANTALLA -->
+<div class="modal-overlay hidden" id="modal-bg">
+  <div class="modal">
+    <h3>Fondo de Pantalla</h3>
+    <div class="form-group">
+      <label class="form-label">Cargar imagen</label>
+      <input type="file" accept="image/*" id="bg-file-input" class="form-input">
+    </div>
+    <div class="form-group">
+      <label class="form-label">O ingresa una URL de imagen</label>
+      <input class="form-input" id="bg-url-input" placeholder="https://...imagen.jpg">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Previsualización</label>
+      <div class="bg-preview" id="bg-preview" style="width:100%;height:120px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="btn-remove-bg">Quitar fondo</button>
+      <button class="btn btn-secondary" id="modal-bg-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="modal-bg-save">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================
+   CONTROLLUCES WIFI - Lógica principal
+   ===================================================== */
+
+// ── CONSTANTES ──────────────────────────────────────
+const ICONS = ['💡','🔦','🕯️','🏮','🌟','⚡','🔴','🟡','🟢','🔵','🌀','🌊','🔥','❄️','🎮','📺','🎵','🏠','🌿','🚗','🚿','☀️','🌙','⭐'];
+const COLORS = ['#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#10b981','#f97316','#ffffff','#a3e635'];
+const DAY_NAMES = ['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
+const SUN_API = 'https://api.sunrise-sunset.org/json';
+
+// ── ESTADO GLOBAL ────────────────────────────────────
+let state = {
+  channels: Array.from({length: 8}, (_, i) => ({
+    id: i,
+    name: `Canal ${i + 1}`,
+    icon: ICONS[0],
+    color: COLORS[0],
+    on: false,
+  })),
+  scenes: [],
+  rules: [],
+  connection: { ip: '192.168.1.100', port: 80, status: 'disconnected' },
+  location: { lat: null, lng: null, name: '' },
+  sun: { sunrise: null, sunset: null, date: null },
+  theme: 'dark',
+  bgImage: null,
+  relayLogic: 'low',
+};
+
+let ws = null;
+let wsReconnectTimer = null;
+let schedulerTimer = null;
+let editingScene = null;
+let editingRule = null;
+let editingChannel = null;
+let pendingBgImage = null;
+
+// ── PERSISTENCIA ─────────────────────────────────────
+function saveState() {
+  try {
+    localStorage.setItem('controllucesState', JSON.stringify(state));
+  } catch(e) {}
+}
+function loadState() {
+  try {
+    const saved = localStorage.getItem('controllucesState');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Merge carefully to keep structure
+      if (parsed.channels) state.channels = parsed.channels;
+      if (parsed.scenes) state.scenes = parsed.scenes;
+      if (parsed.rules) state.rules = parsed.rules;
+      if (parsed.connection) state.connection = parsed.connection;
+      if (parsed.location) state.location = parsed.location;
+      if (parsed.sun) state.sun = parsed.sun;
+      if (parsed.theme) state.theme = parsed.theme;
+      if (parsed.bgImage) state.bgImage = parsed.bgImage;
+      if (parsed.relayLogic) state.relayLogic = parsed.relayLogic;
+    }
+  } catch(e) {}
+}
+
+// ── CONEXIÓN WEBSOCKET ───────────────────────────────
+function wsConnect() {
+  if (ws) { ws.close(); ws = null; }
+  clearTimeout(wsReconnectTimer);
+  const { ip, port } = state.connection;
+  if (!ip) return;
+
+  try {
+    ws = new WebSocket(`ws://${ip}:${port}/ws`);
+    ws.onopen = () => {
+      state.connection.status = 'connected';
+      updateConnectionUI();
+      addLog('Conectado al ESP32 en ' + ip);
+      ws.send(JSON.stringify({ cmd: 'getStatus' }));
+    };
+    ws.onclose = () => {
+      state.connection.status = 'disconnected';
+      updateConnectionUI();
+      addLog('Desconectado del ESP32. Reconectando...');
+      wsReconnectTimer = setTimeout(wsConnect, 4000);
+    };
+    ws.onerror = () => {
+      state.connection.status = 'error';
+      updateConnectionUI();
+    };
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'status') {
+          // Update relay states from ESP32
+          msg.relays.forEach((v, i) => {
+            if (i < 8) state.channels[i].on = v;
+          });
+          renderChannels();
+          updateSubtitle();
+        }
+      } catch(err) {}
+    };
+  } catch(err) {
+    state.connection.status = 'error';
+    updateConnectionUI();
+  }
+}
+
+function wsSendRelay(id, on) {
+  const cmd = JSON.stringify({ cmd: 'setRelay', id, on });
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(cmd);
+    return true;
+  }
+  // Simulation mode
+  addLog(`[Simulación] Canal ${id + 1}: ${on ? 'ON' : 'OFF'}`);
+  return false;
+}
+
+function wsSendRelays(states) {
+  const cmd = JSON.stringify({ cmd: 'setRelays', states });
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(cmd);
+    return true;
+  }
+  addLog(`[Simulación] Todos los canales: ${states.map(v => v ? 'ON' : 'OFF').join(', ')}`);
+  return false;
+}
+
+function wsDisconnect() {
+  clearTimeout(wsReconnectTimer);
+  if (ws) { ws.close(); ws = null; }
+  state.connection.status = 'disconnected';
+  updateConnectionUI();
+}
+
+function updateConnectionUI() {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  if (state.connection.status === 'connected') {
+    dot.className = 'online';
+    txt.textContent = state.connection.ip;
+  } else if (state.connection.status === 'error') {
+    dot.className = '';
+    dot.style.background = 'var(--danger)';
+    txt.textContent = 'Error';
+  } else {
+    dot.className = '';
+    dot.style.background = '';
+    txt.textContent = 'Sin conexión';
+  }
+}
+
+// ── RELOJ ────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+// ── CANALES ──────────────────────────────────────────
+function toggleChannel(id) {
+  state.channels[id].on = !state.channels[id].on;
+  wsSendRelay(id, state.channels[id].on);
+  saveState();
+  renderChannelCard(id);
+  updateSubtitle();
+}
+
+function setAllChannels(on) {
+  state.channels.forEach(ch => ch.on = on);
+  wsSendRelays(state.channels.map(ch => ch.on));
+  saveState();
+  renderChannels();
+  updateSubtitle();
+}
+
+function pulseChannel(id) {
+  const wasOn = state.channels[id].on;
+  state.channels[id].on = true;
+  wsSendRelay(id, true);
+  renderChannelCard(id);
+  setTimeout(() => {
+    state.channels[id].on = wasOn;
+    wsSendRelay(id, wasOn);
+    saveState();
+    renderChannelCard(id);
+  }, 1000);
+}
+
+function updateSubtitle() {
+  const on = state.channels.filter(c => c.on).length;
+  document.getElementById('channels-subtitle').textContent = `8 canales · ${on} encendido${on !== 1 ? 's' : ''}`;
+}
+
+function renderChannelCard(id) {
+  const card = document.querySelector(`[data-channel-id="${id}"]`);
+  if (!card) return;
+  const ch = state.channels[id];
+  card.className = 'channel-card' + (ch.on ? ' on' : '');
+  const icon = card.querySelector('.channel-icon');
+  icon.textContent = ch.icon;
+  icon.style.color = ch.on ? ch.color : '';
+  const nameInput = card.querySelector('.channel-name');
+  nameInput.value = ch.name;
+  const status = card.querySelector('.channel-status');
+  status.textContent = ch.on ? 'ENCENDIDO' : 'APAGADO';
+  status.className = 'channel-status' + (ch.on ? ' on' : '');
+  const toggle = card.querySelector('.toggle input');
+  toggle.checked = ch.on;
+}
+
+function renderChannels() {
+  const grid = document.getElementById('channels-grid');
+  grid.innerHTML = '';
+  state.channels.forEach(ch => {
+    const div = document.createElement('div');
+    div.className = 'channel-card' + (ch.on ? ' on' : '');
+    div.setAttribute('data-channel-id', ch.id);
+    div.innerHTML = `
+      <div class="channel-card-top">
+        <div class="channel-icon" style="${ch.on ? `color:${ch.color}` : ''}">${ch.icon}</div>
+        <div class="channel-name-wrap">
+          <input class="channel-name" value="${ch.name}" placeholder="Canal ${ch.id+1}" spellcheck="false">
+          <div class="channel-id">Canal ${ch.id + 1}</div>
+        </div>
+        <button class="btn btn-secondary btn-sm btn-icon" data-edit-ch="${ch.id}" title="Personalizar">✏️</button>
+      </div>
+      <div class="channel-toggle-row">
+        <span class="channel-status${ch.on ? ' on' : ''}">${ch.on ? 'ENCENDIDO' : 'APAGADO'}</span>
+        <label class="toggle">
+          <input type="checkbox" ${ch.on ? 'checked' : ''} data-toggle="${ch.id}">
+          <span class="toggle-slider"></span>
+        </label>
+        <button class="pulse-btn" data-pulse="${ch.id}" title="Pulso de 1 segundo">⚡</button>
+      </div>
+    `;
+    grid.appendChild(div);
+
+    // Events
+    div.querySelector('.channel-name').addEventListener('change', (e) => {
+      state.channels[ch.id].name = e.target.value.trim() || `Canal ${ch.id+1}`;
+      saveState();
+      renderChannelSettings();
+    });
+    div.querySelector(`[data-toggle="${ch.id}"]`).addEventListener('change', () => toggleChannel(ch.id));
+    div.querySelector(`[data-pulse="${ch.id}"]`).addEventListener('click', () => pulseChannel(ch.id));
+    div.querySelector(`[data-edit-ch="${ch.id}"]`).addEventListener('click', () => openChannelModal(ch.id));
+  });
+}
+
+// ── ESCENAS ──────────────────────────────────────────
+function activateScene(sceneId) {
+  const scene = state.scenes.find(s => s.id === sceneId);
+  if (!scene) return;
+  state.channels.forEach((ch, i) => {
+    ch.on = scene.channels.includes(i);
+  });
+  wsSendRelays(state.channels.map(ch => ch.on));
+  saveState();
+  renderChannels();
+  updateSubtitle();
+  addLog(`Escena "${scene.name}" activada`);
+}
+
+function deleteScene(sceneId) {
+  if (!confirm('¿Eliminar esta escena?')) return;
+  state.scenes = state.scenes.filter(s => s.id !== sceneId);
+  // Remove from rules that reference this scene
+  state.rules.forEach(r => { if (r.sceneId === sceneId) r.sceneId = null; });
+  saveState();
+  renderScenes();
+}
+
+function renderScenes() {
+  const grid = document.getElementById('scenes-grid');
+  if (!state.scenes.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">🎭</div><p>No hay escenas.<br>Crea una para empezar.</p></div>`;
+    return;
+  }
+  grid.innerHTML = '';
+  state.scenes.forEach(scene => {
+    const div = document.createElement('div');
+    div.className = 'scene-card';
+    const tags = state.channels.map((ch, i) => `<span class="scene-ch-tag ${scene.channels.includes(i) ? 'on' : ''}">${ch.icon} ${ch.name}</span>`).join('');
+    const hasSched = scene.time && scene.days && scene.days.length;
+    const schedText = hasSched ? `⏰ ${scene.time} · ${scene.days.map(d => DAY_NAMES[d]).join(',')}` : '';
+    div.innerHTML = `
+      <div class="scene-card-top">
+        <div class="scene-emoji">${scene.icon || '🎭'}</div>
+        <div class="scene-info">
+          <div class="scene-name">${escapeHtml(scene.name)}</div>
+          ${hasSched ? `<div class="scene-time-badge">${schedText}</div>` : ''}
+        </div>
+      </div>
+      <div class="scene-channels">${tags}</div>
+      <div class="scene-actions">
+        <button class="btn btn-primary btn-sm" data-activate="${scene.id}">▶ Activar</button>
+        <button class="btn btn-secondary btn-sm" data-edit-scene="${scene.id}">✏️</button>
+        <button class="btn btn-danger btn-sm" data-delete-scene="${scene.id}">🗑️</button>
+      </div>
+    `;
+    grid.appendChild(div);
+    div.querySelector(`[data-activate]`).addEventListener('click', () => activateScene(scene.id));
+    div.querySelector(`[data-edit-scene]`).addEventListener('click', () => openSceneModal(scene.id));
+    div.querySelector(`[data-delete-scene]`).addEventListener('click', () => deleteScene(scene.id));
+  });
+}
+
+// ── MODAL DE ESCENAS ─────────────────────────────────
+const SCENE_ICONS = ['🎭','🌙','☀️','🎬','🍽️','📚','🏠','🌿','🎉','🛁','💤','🔦','🕯️','🌟','🎮','🎵'];
+
+function openSceneModal(sceneId = null) {
+  editingScene = sceneId;
+  const scene = sceneId !== null ? state.scenes.find(s => s.id === sceneId) : null;
+  document.getElementById('modal-scene-title').textContent = scene ? 'Editar Escena' : 'Nueva Escena';
+  document.getElementById('scene-name-input').value = scene ? scene.name : '';
+
+  // Icon grid
+  const igrid = document.getElementById('scene-icon-grid');
+  igrid.innerHTML = '';
+  SCENE_ICONS.forEach(ic => {
+    const btn = document.createElement('div');
+    btn.className = 'icon-opt' + (scene && scene.icon === ic ? ' selected' : (!scene && ic === '🎭' ? ' selected' : ''));
+    btn.textContent = ic;
+    btn.addEventListener('click', () => { igrid.querySelectorAll('.icon-opt').forEach(b => b.classList.remove('selected')); btn.classList.add('selected'); });
+    igrid.appendChild(btn);
+  });
+
+  // Channel checkboxes
+  const checks = document.getElementById('scene-ch-checks');
+  checks.innerHTML = '';
+  state.channels.forEach((ch, i) => {
+    const isOn = scene ? scene.channels.includes(i) : false;
+    const label = document.createElement('label');
+    label.className = 'ch-check-item' + (isOn ? ' on' : '');
+    label.innerHTML = `
+      <input type="checkbox" ${isOn ? 'checked' : ''}>
+      <span class="ch-icon-label">${ch.icon}</span>
+      <span class="ch-name-label">${escapeHtml(ch.name)}</span>
+    `;
+    const cb = label.querySelector('input');
+    cb.addEventListener('change', () => label.className = 'ch-check-item' + (cb.checked ? ' on' : ''));
+    checks.appendChild(label);
+  });
+
+  // Schedule
+  document.getElementById('scene-time-input').value = scene ? (scene.time || '') : '';
+  const dayBtns = document.querySelectorAll('#scene-days .day-btn');
+  dayBtns.forEach(btn => {
+    const d = parseInt(btn.dataset.d);
+    const isOn = scene ? (scene.days || []).includes(d) : false;
+    btn.className = 'day-btn' + (isOn ? ' on' : '');
+    btn.onclick = () => btn.classList.toggle('on');
+  });
+
+  document.getElementById('modal-scene').classList.remove('hidden');
+  document.getElementById('scene-name-input').focus();
+}
+
+function saveSceneModal() {
+  const name = document.getElementById('scene-name-input').value.trim();
+  if (!name) { alert('Ingresa un nombre para la escena'); return; }
+  const icon = document.querySelector('#scene-icon-grid .selected')?.textContent || '🎭';
+  const channels = [];
+  document.querySelectorAll('#scene-ch-checks input[type=checkbox]').forEach((cb, i) => { if (cb.checked) channels.push(i); });
+  const time = document.getElementById('scene-time-input').value;
+  const days = [];
+  document.querySelectorAll('#scene-days .day-btn.on').forEach(btn => days.push(parseInt(btn.dataset.d)));
+
+  if (editingScene !== null) {
+    const s = state.scenes.find(s => s.id === editingScene);
+    if (s) { s.name = name; s.icon = icon; s.channels = channels; s.time = time; s.days = days; }
+  } else {
+    state.scenes.push({ id: Date.now(), name, icon, channels, time, days });
+  }
+
+  saveState();
+  renderScenes();
+  updateRuleSceneSelect();
+  document.getElementById('modal-scene').classList.add('hidden');
+}
+
+// ── AUTOMATIZACIÓN - REGLAS ──────────────────────────
+function openRuleModal(ruleId = null) {
+  editingRule = ruleId;
+  const rule = ruleId !== null ? state.rules.find(r => r.id === ruleId) : null;
+  document.getElementById('modal-rule-title').textContent = rule ? 'Editar Regla' : 'Nueva Regla';
+  document.getElementById('rule-name-input').value = rule ? rule.name : '';
+  document.getElementById('rule-trigger').value = rule ? rule.trigger : 'sunset';
+  document.getElementById('rule-offset').value = rule ? (rule.offset || 30) : 30;
+  document.getElementById('rule-time-input').value = rule ? (rule.time || '') : '';
+  document.getElementById('rule-action-type').value = rule ? rule.actionType : 'scene';
+  updateRuleSceneSelect();
+  if (rule && rule.sceneId) document.getElementById('rule-scene-select').value = rule.sceneId;
+
+  // Day buttons
+  const dayBtns = document.querySelectorAll('#rule-days .day-btn');
+  dayBtns.forEach(btn => {
+    const d = parseInt(btn.dataset.d);
+    const isOn = rule ? (rule.days || [0,1,2,3,4,5,6]).includes(d) : true;
+    btn.className = 'day-btn' + (isOn ? ' on' : '');
+    btn.onclick = () => btn.classList.toggle('on');
+  });
+
+  // Channel checks for rule
+  const checks = document.getElementById('rule-ch-checks');
+  checks.innerHTML = '';
+  state.channels.forEach((ch, i) => {
+    const isOn = rule && rule.channels ? rule.channels.includes(i) : false;
+    const label = document.createElement('label');
+    label.className = 'ch-check-item' + (isOn ? ' on' : '');
+    label.innerHTML = `<input type="checkbox" ${isOn ? 'checked' : ''}><span class="ch-icon-label">${ch.icon}</span><span class="ch-name-label">${escapeHtml(ch.name)}</span>`;
+    const cb = label.querySelector('input');
+    cb.addEventListener('change', () => label.className = 'ch-check-item' + (cb.checked ? ' on' : ''));
+    checks.appendChild(label);
+  });
+
+  updateRuleTriggerUI();
+  updateRuleActionUI();
+
+  document.getElementById('rule-trigger').onchange = updateRuleTriggerUI;
+  document.getElementById('rule-action-type').onchange = updateRuleActionUI;
+
+  document.getElementById('modal-rule').classList.remove('hidden');
+}
+
+function updateRuleTriggerUI() {
+  const trigger = document.getElementById('rule-trigger').value;
+  const needsOffset = ['sunset_before','sunset_after','sunrise_before','sunrise_after'].includes(trigger);
+  const needsTime = trigger === 'time';
+  document.getElementById('rule-offset-group').style.display = needsOffset ? '' : 'none';
+  document.getElementById('rule-time-group').style.display = needsTime ? '' : 'none';
+}
+
+function updateRuleActionUI() {
+  const action = document.getElementById('rule-action-type').value;
+  document.getElementById('rule-scene-group').style.display = action === 'scene' ? '' : 'none';
+  document.getElementById('rule-channels-group').style.display = action === 'channels' ? '' : 'none';
+}
+
+function updateRuleSceneSelect() {
+  const sel = document.getElementById('rule-scene-select');
+  sel.innerHTML = state.scenes.length
+    ? state.scenes.map(s => `<option value="${s.id}">${s.icon} ${escapeHtml(s.name)}</option>`).join('')
+    : '<option value="">— Sin escenas —</option>';
+}
+
+function saveRuleModal() {
+  const name = document.getElementById('rule-name-input').value.trim();
+  if (!name) { alert('Ingresa un nombre para la regla'); return; }
+  const trigger = document.getElementById('rule-trigger').value;
+  const offset = parseInt(document.getElementById('rule-offset').value) || 30;
+  const time = document.getElementById('rule-time-input').value;
+  const actionType = document.getElementById('rule-action-type').value;
+  const sceneId = parseInt(document.getElementById('rule-scene-select').value);
+  const days = [];
+  document.querySelectorAll('#rule-days .day-btn.on').forEach(btn => days.push(parseInt(btn.dataset.d)));
+  const channels = [];
+  document.querySelectorAll('#rule-ch-checks input[type=checkbox]').forEach((cb, i) => { if (cb.checked) channels.push(i); });
+
+  const ruleData = { name, trigger, offset, time, actionType, sceneId, days, channels, enabled: true };
+
+  if (editingRule !== null) {
+    const idx = state.rules.findIndex(r => r.id === editingRule);
+    if (idx !== -1) { state.rules[idx] = { ...state.rules[idx], ...ruleData }; }
+  } else {
+    state.rules.push({ id: Date.now(), ...ruleData });
+  }
+  saveState();
+  renderRules();
+  document.getElementById('modal-rule').classList.add('hidden');
+}
+
+function deleteRule(id) {
+  if (!confirm('¿Eliminar esta regla?')) return;
+  state.rules = state.rules.filter(r => r.id !== id);
+  saveState();
+  renderRules();
+}
+
+function renderRules() {
+  const list = document.getElementById('rules-list');
+  if (!state.rules.length) {
+    list.innerHTML = `<div class="empty-state" style="padding:20px"><p>No hay reglas. Crea una para automatizar los canales.</p></div>`;
+    return;
+  }
+  list.innerHTML = '';
+  state.rules.forEach(rule => {
+    const div = document.createElement('div');
+    div.className = 'auto-rule-card' + (rule.enabled ? ' enabled' : '');
+    const trigText = getTriggerText(rule);
+    const actionText = getActionText(rule);
+    div.innerHTML = `
+      <div style="font-size:20px">${getTriggerIcon(rule.trigger)}</div>
+      <div class="auto-rule-info">
+        <div class="auto-rule-title">${escapeHtml(rule.name)}</div>
+        <div class="auto-rule-desc">${trigText} → ${actionText} · ${(rule.days||[]).map(d=>DAY_NAMES[d]).join(',')}</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" ${rule.enabled ? 'checked' : ''} data-rule-toggle="${rule.id}">
+        <span class="toggle-slider"></span>
+      </label>
+      <button class="btn btn-secondary btn-sm btn-icon" data-edit-rule="${rule.id}">✏️</button>
+      <button class="btn btn-danger btn-sm btn-icon" data-del-rule="${rule.id}">🗑️</button>
+    `;
+    list.appendChild(div);
+    div.querySelector(`[data-rule-toggle]`).addEventListener('change', (e) => {
+      rule.enabled = e.target.checked;
+      saveState();
+      div.className = 'auto-rule-card' + (rule.enabled ? ' enabled' : '');
+    });
+    div.querySelector(`[data-edit-rule]`).addEventListener('click', () => openRuleModal(rule.id));
+    div.querySelector(`[data-del-rule]`).addEventListener('click', () => deleteRule(rule.id));
+  });
+}
+
+function getTriggerIcon(trigger) {
+  const icons = { sunset:'🌇', sunrise:'🌄', sunset_before:'🌅', sunset_after:'🌆', sunrise_before:'🌃', sunrise_after:'🌅', time:'⏰' };
+  return icons[trigger] || '⏰';
+}
+function getTriggerText(rule) {
+  const labels = { sunset:'Al atardecer', sunrise:'Al amanecer', sunset_before:`${rule.offset} min antes del atardecer`, sunset_after:`${rule.offset} min después del atardecer`, sunrise_before:`${rule.offset} min antes del amanecer`, sunrise_after:`${rule.offset} min después del amanecer`, time:`A las ${rule.time}` };
+  return labels[rule.trigger] || rule.trigger;
+}
+function getActionText(rule) {
+  if (rule.actionType === 'scene') {
+    const s = state.scenes.find(s => s.id === rule.sceneId);
+    return s ? `Escena "${s.name}"` : 'Escena eliminada';
+  }
+  if (rule.actionType === 'all_on') return 'Encender todos';
+  if (rule.actionType === 'all_off') return 'Apagar todos';
+  if (rule.actionType === 'channels') return `Canales: ${(rule.channels||[]).map(i => state.channels[i]?.name || i).join(', ')}`;
+  return '';
+}
+
+// ── AMANECER / ATARDECER ─────────────────────────────
+async function fetchSunData() {
+  const lat = parseFloat(document.getElementById('loc-lat').value);
+  const lng = parseFloat(document.getElementById('loc-lng').value);
+  if (isNaN(lat) || isNaN(lng)) { alert('Ingresa latitud y longitud válidas'); return; }
+
+  state.location.lat = lat;
+  state.location.lng = lng;
+  document.getElementById('sun-rise').textContent = '...';
+  document.getElementById('sun-set').textContent = '...';
+
+  try {
+    const url = `${SUN_API}?lat=${lat}&lng=${lng}&formatted=0`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.status !== 'OK') throw new Error('API error');
+    const sunrise = new Date(data.results.sunrise);
+    const sunset = new Date(data.results.sunset);
+    state.sun = {
+      sunrise: sunrise.toISOString(),
+      sunset: sunset.toISOString(),
+      date: new Date().toDateString(),
+    };
+    updateSunUI();
+    saveState();
+    addLog(`Sol: ↑ ${formatTime(sunrise)} ↓ ${formatTime(sunset)}`);
+  } catch(e) {
+    document.getElementById('sun-rise').textContent = 'Error';
+    document.getElementById('sun-set').textContent = 'Error';
+    addLog('Error al obtener datos del sol. Revisa la conexión a internet.');
+  }
+}
+
+function updateSunUI() {
+  if (state.sun.sunrise) {
+    document.getElementById('sun-rise').textContent = formatTime(new Date(state.sun.sunrise));
+    document.getElementById('sun-rise').className = 'sun-time';
+  }
+  if (state.sun.sunset) {
+    document.getElementById('sun-set').textContent = formatTime(new Date(state.sun.sunset));
+    document.getElementById('sun-set').className = 'sun-time';
+  }
+}
+
+async function geolocate() {
+  if (!navigator.geolocation) { alert('Tu navegador no soporta geolocalización'); return; }
+  const btn = document.getElementById('btn-geolocate');
+  btn.textContent = '📍 Detectando...';
+  btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const lat = pos.coords.latitude.toFixed(4);
+    const lng = pos.coords.longitude.toFixed(4);
+    document.getElementById('loc-lat').value = lat;
+    document.getElementById('loc-lng').value = lng;
+    // Reverse geocode with nominatim
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+      const d = await r.json();
+      const name = d.address.city || d.address.town || d.address.village || d.address.county || '';
+      const country = d.address.country || '';
+      const fullName = [name, country].filter(Boolean).join(', ');
+      state.location.name = fullName;
+      document.getElementById('loc-name').value = fullName;
+    } catch(e) {
+      document.getElementById('loc-name').value = `${lat}, ${lng}`;
+    }
+    btn.textContent = '📍 Detectar';
+    btn.disabled = false;
+    await fetchSunData();
+  }, (err) => {
+    alert('No se pudo obtener la ubicación: ' + err.message);
+    btn.textContent = '📍 Detectar';
+    btn.disabled = false;
+  });
+}
+
+// ── SCHEDULER (verificación cada 30s) ───────────────
+function startScheduler() {
+  if (schedulerTimer) clearInterval(schedulerTimer);
+  checkSchedules();
+  schedulerTimer = setInterval(checkSchedules, 30000);
+}
+
+let lastFiredRules = {};  // rule.id -> last fire timestamp
+
+function checkSchedules() {
+  const now = new Date();
+  const todayDay = now.getDay();
+  const todayStr = now.toDateString();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+  // Refresh sun data if stale
+  if (state.sun.date !== todayStr && state.location.lat) {
+    fetchSunData();
+  }
+
+  let nextEvent = null;
+
+  state.rules.forEach(rule => {
+    if (!rule.enabled) return;
+    if (!(rule.days || [0,1,2,3,4,5,6]).includes(todayDay)) return;
+
+    const targetMinutes = getRuleTargetMinutes(rule);
+    if (targetMinutes === null) return;
+
+    const lastFire = lastFiredRules[rule.id];
+    const alreadyFiredToday = lastFire && new Date(lastFire).toDateString() === todayStr;
+
+    if (!alreadyFiredToday && Math.abs(nowMinutes - targetMinutes) <= 1) {
+      fireRule(rule);
+      lastFiredRules[rule.id] = Date.now();
+    }
+
+    // Track next event
+    const diff = targetMinutes - nowMinutes;
+    if (diff > 0 && (!nextEvent || diff < nextEvent.diff)) {
+      nextEvent = { diff, name: rule.name, time: minutesToTimeStr(targetMinutes) };
+    }
+  });
+
+  // Scene schedules
+  state.scenes.forEach(scene => {
+    if (!scene.time || !scene.days?.length) return;
+    if (!scene.days.includes(todayDay)) return;
+    const [h, m] = scene.time.split(':').map(Number);
+    const targetMinutes = h * 60 + m;
+    const key = `scene_${scene.id}`;
+    const lastFire = lastFiredRules[key];
+    const alreadyFiredToday = lastFire && new Date(lastFire).toDateString() === todayStr;
+    if (!alreadyFiredToday && Math.abs(nowMinutes - targetMinutes) <= 1) {
+      activateScene(scene.id);
+      addLog(`Escena programada: "${scene.name}"`);
+      lastFiredRules[key] = Date.now();
+    }
+    const diff = targetMinutes - nowMinutes;
+    if (diff > 0 && (!nextEvent || diff < nextEvent.diff)) {
+      nextEvent = { diff, name: scene.name, time: scene.time };
+    }
+  });
+
+  // Show next event in header
+  const hdr = document.getElementById('next-event-header');
+  if (nextEvent) {
+    hdr.textContent = `⏰ ${nextEvent.name} a las ${nextEvent.time}`;
+    hdr.classList.remove('hidden');
+  } else {
+    hdr.classList.add('hidden');
+  }
+}
+
+function getRuleTargetMinutes(rule) {
+  const sunriseMinutes = state.sun.sunrise ? getMinutesFromDate(new Date(state.sun.sunrise)) : null;
+  const sunsetMinutes = state.sun.sunset ? getMinutesFromDate(new Date(state.sun.sunset)) : null;
+
+  switch(rule.trigger) {
+    case 'sunset': return sunsetMinutes;
+    case 'sunrise': return sunriseMinutes;
+    case 'sunset_before': return sunsetMinutes !== null ? sunsetMinutes - (rule.offset || 0) : null;
+    case 'sunset_after': return sunsetMinutes !== null ? sunsetMinutes + (rule.offset || 0) : null;
+    case 'sunrise_before': return sunriseMinutes !== null ? sunriseMinutes - (rule.offset || 0) : null;
+    case 'sunrise_after': return sunriseMinutes !== null ? sunriseMinutes + (rule.offset || 0) : null;
+    case 'time': {
+      if (!rule.time) return null;
+      const [h, m] = rule.time.split(':').map(Number);
+      return h * 60 + m;
+    }
+    default: return null;
+  }
+}
+
+function fireRule(rule) {
+  addLog(`Regla: "${rule.name}"`);
+  switch(rule.actionType) {
+    case 'scene':
+      if (rule.sceneId) activateScene(rule.sceneId);
+      break;
+    case 'all_on': setAllChannels(true); break;
+    case 'all_off': setAllChannels(false); break;
+    case 'channels':
+      (rule.channels || []).forEach(i => { if (state.channels[i]) state.channels[i].on = true; });
+      wsSendRelays(state.channels.map(ch => ch.on));
+      saveState(); renderChannels(); updateSubtitle();
+      break;
+  }
+}
+
+function getMinutesFromDate(d) { return d.getHours() * 60 + d.getMinutes(); }
+function minutesToTimeStr(m) { return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`; }
+
+// ── MODAL DE CANAL ───────────────────────────────────
+function openChannelModal(id) {
+  editingChannel = id;
+  const ch = state.channels[id];
+  document.getElementById('modal-ch-id').textContent = `#${id + 1}`;
+  document.getElementById('modal-ch-name').value = ch.name;
+
+  const igrid = document.getElementById('modal-ch-icon-grid');
+  igrid.innerHTML = '';
+  ICONS.forEach(ic => {
+    const btn = document.createElement('div');
+    btn.className = 'icon-opt' + (ch.icon === ic ? ' selected' : '');
+    btn.textContent = ic;
+    btn.onclick = () => { igrid.querySelectorAll('.icon-opt').forEach(b => b.classList.remove('selected')); btn.classList.add('selected'); };
+    igrid.appendChild(btn);
+  });
+
+  const colorWrap = document.getElementById('modal-ch-colors');
+  colorWrap.innerHTML = '';
+  COLORS.forEach(color => {
+    const div = document.createElement('div');
+    div.className = 'color-swatch' + (ch.color === color ? ' selected' : '');
+    div.style.background = color;
+    div.onclick = () => { colorWrap.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected')); div.classList.add('selected'); };
+    colorWrap.appendChild(div);
+  });
+
+  document.getElementById('modal-channel').classList.remove('hidden');
+}
+
+function saveChannelModal() {
+  const id = editingChannel;
+  const name = document.getElementById('modal-ch-name').value.trim();
+  const icon = document.querySelector('#modal-ch-icon-grid .selected')?.textContent || ICONS[0];
+  const colorEl = document.querySelector('#modal-ch-colors .selected');
+  const color = colorEl ? colorEl.style.background : COLORS[0];
+
+  state.channels[id].name = name || `Canal ${id+1}`;
+  state.channels[id].icon = icon;
+  state.channels[id].color = color;
+
+  saveState();
+  renderChannels();
+  updateSubtitle();
+  renderChannelSettings();
+  document.getElementById('modal-channel').classList.add('hidden');
+}
+
+// ── CONFIGURACIÓN - CANALES ──────────────────────────
+function renderChannelSettings() {
+  const list = document.getElementById('channel-settings-list');
+  list.innerHTML = '';
+  state.channels.forEach((ch, i) => {
+    const div = document.createElement('div');
+    div.className = 'settings-row';
+    div.innerHTML = `
+      <div class="channel-icon" style="width:36px;height:36px;font-size:18px;background:var(--bg3);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--border)">${ch.icon}</div>
+      <div class="settings-row-label" style="margin-left:4px">
+        <strong>${escapeHtml(ch.name)}</strong>
+        <span>Canal ${i + 1}</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" data-cfg-ch="${i}">✏️ Editar</button>
+    `;
+    div.querySelector(`[data-cfg-ch]`).addEventListener('click', () => openChannelModal(i));
+    list.appendChild(div);
+  });
+}
+
+// ── TEMA Y FONDO ─────────────────────────────────────
+function toggleTheme() {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', state.theme);
+  document.getElementById('theme-btn').textContent = state.theme === 'dark' ? '🌙' : '☀️';
+  saveState();
+}
+
+function applyBgImage(src) {
+  state.bgImage = src;
+  document.body.style.setProperty('--bg-img', `url("${src}")`);
+  document.body.classList.add('has-bg');
+  saveState();
+}
+
+function removeBgImage() {
+  state.bgImage = null;
+  document.body.style.removeProperty('--bg-img');
+  document.body.classList.remove('has-bg');
+  saveState();
+}
+
+// ── LOG DE EVENTOS ───────────────────────────────────
+function addLog(msg) {
+  const list = document.getElementById('event-log');
+  const now = new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${now}</span>${escapeHtml(msg)}`;
+  list.insertBefore(entry, list.firstChild);
+  // Keep max 50 entries
+  while (list.children.length > 50) list.removeChild(list.lastChild);
+}
+
+// ── EXPORT / IMPORT ──────────────────────────────────
+function exportConfig() {
+  const data = { channels: state.channels, scenes: state.scenes, rules: state.rules, location: state.location, connection: state.connection };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `controllucesapp_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importConfig(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.channels) state.channels = data.channels;
+      if (data.scenes) state.scenes = data.scenes;
+      if (data.rules) state.rules = data.rules;
+      if (data.location) state.location = data.location;
+      if (data.connection) state.connection = data.connection;
+      saveState();
+      renderAll();
+      addLog('Configuración importada correctamente');
+    } catch(err) { alert('Error al importar el archivo: ' + err.message); }
+  };
+  reader.readAsText(file);
+}
+
+// ── UTILS ────────────────────────────────────────────
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function formatTime(d) {
+  return d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ── RENDER COMPLETO ──────────────────────────────────
+function renderAll() {
+  renderChannels();
+  updateSubtitle();
+  renderScenes();
+  renderRules();
+  renderChannelSettings();
+  updateConnectionUI();
+  updateSunUI();
+  // Location fields
+  if (state.location.lat) document.getElementById('loc-lat').value = state.location.lat;
+  if (state.location.lng) document.getElementById('loc-lng').value = state.location.lng;
+  if (state.location.name) document.getElementById('loc-name').value = state.location.name;
+  // Connection fields
+  document.getElementById('esp-ip').value = state.connection.ip || '';
+  document.getElementById('esp-port').value = state.connection.port || 80;
+  document.getElementById('relay-logic').value = state.relayLogic || 'low';
+  // Theme
+  document.documentElement.setAttribute('data-theme', state.theme);
+  document.getElementById('theme-btn').textContent = state.theme === 'dark' ? '🌙' : '☀️';
+  // Background
+  if (state.bgImage) applyBgImage(state.bgImage);
+}
+
+// ── TABS ─────────────────────────────────────────────
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${tabId}`));
+}
+
+// ── INIT ─────────────────────────────────────────────
+function init() {
+  loadState();
+  renderAll();
+  updateRuleSceneSelect();
+
+  // Clock
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // Tab navigation
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // Channel buttons
+  document.getElementById('btn-all-on').addEventListener('click', () => setAllChannels(true));
+  document.getElementById('btn-all-off').addEventListener('click', () => setAllChannels(false));
+
+  // Scene modal
+  document.getElementById('btn-new-scene').addEventListener('click', () => openSceneModal());
+  document.getElementById('modal-scene-cancel').addEventListener('click', () => document.getElementById('modal-scene').classList.add('hidden'));
+  document.getElementById('modal-scene-save').addEventListener('click', saveSceneModal);
+
+  // Rule modal
+  document.getElementById('btn-new-rule').addEventListener('click', () => openRuleModal());
+  document.getElementById('modal-rule-cancel').addEventListener('click', () => document.getElementById('modal-rule').classList.add('hidden'));
+  document.getElementById('modal-rule-save').addEventListener('click', saveRuleModal);
+
+  // Channel modal
+  document.getElementById('modal-ch-cancel').addEventListener('click', () => document.getElementById('modal-channel').classList.add('hidden'));
+  document.getElementById('modal-ch-save').addEventListener('click', saveChannelModal);
+
+  // Sun data
+  document.getElementById('btn-geolocate').addEventListener('click', geolocate);
+  document.getElementById('btn-fetch-sun').addEventListener('click', fetchSunData);
+
+  // Theme
+  document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+
+  // Background modal
+  document.getElementById('bg-btn').addEventListener('click', () => {
+    pendingBgImage = state.bgImage;
+    document.getElementById('bg-url-input').value = '';
+    const preview = document.getElementById('bg-preview');
+    preview.style.backgroundImage = state.bgImage ? `url("${state.bgImage}")` : '';
+    document.getElementById('modal-bg').classList.remove('hidden');
+  });
+  document.getElementById('modal-bg-cancel').addEventListener('click', () => document.getElementById('modal-bg').classList.add('hidden'));
+  document.getElementById('btn-remove-bg').addEventListener('click', () => { removeBgImage(); document.getElementById('modal-bg').classList.add('hidden'); });
+  document.getElementById('modal-bg-save').addEventListener('click', () => {
+    if (pendingBgImage) { applyBgImage(pendingBgImage); }
+    document.getElementById('modal-bg').classList.add('hidden');
+  });
+  document.getElementById('bg-url-input').addEventListener('input', (e) => {
+    const url = e.target.value.trim();
+    if (url) { pendingBgImage = url; document.getElementById('bg-preview').style.backgroundImage = `url("${url}")`; }
+  });
+  document.getElementById('bg-file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      pendingBgImage = ev.target.result;
+      document.getElementById('bg-preview').style.backgroundImage = `url("${ev.target.result}")`;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Connection settings
+  document.getElementById('btn-connect').addEventListener('click', () => {
+    state.connection.ip = document.getElementById('esp-ip').value.trim();
+    state.connection.port = parseInt(document.getElementById('esp-port').value) || 80;
+    saveState();
+    wsConnect();
+  });
+  document.getElementById('btn-disconnect').addEventListener('click', wsDisconnect);
+  document.getElementById('relay-logic').addEventListener('change', (e) => {
+    state.relayLogic = e.target.value;
+    saveState();
+  });
+
+  // Export / Import
+  document.getElementById('btn-export').addEventListener('click', exportConfig);
+  document.getElementById('btn-import').addEventListener('change', (e) => {
+    if (e.target.files[0]) importConfig(e.target.files[0]);
+  });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    if (confirm('¿Estás seguro? Se borrarán todas las escenas, reglas y configuración.')) {
+      localStorage.removeItem('controllucesState');
+      location.reload();
+    }
+  });
+
+  // Close modals on overlay click
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+  });
+
+  // Scheduler
+  startScheduler();
+
+  // Auto-fetch sun if we have location
+  if (state.location.lat && state.sun.date !== new Date().toDateString()) {
+    fetchSunData();
+  }
+
+  addLog('ControlLuces iniciado · Modo ' + (ws ? 'conectado' : 'simulación'));
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
