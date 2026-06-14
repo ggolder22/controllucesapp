@@ -574,6 +574,49 @@ main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
       <div id="channel-settings-list"></div>
     </div>
 
+    <!-- Telegram -->
+    <div class="settings-card">
+      <h3>✈️ Telegram Bot</h3>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Activar notificaciones</strong>
+          <span>Recibir mensajes y operar desde Telegram</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="tg-enabled">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Token del Bot</strong>
+          <span>Lo da @BotFather al crear el bot</span>
+        </div>
+        <input class="form-input" id="tg-token" placeholder="123456:ABC-xyz..." style="width:220px" type="password">
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <strong>Chat ID</strong>
+          <span>Tu ID personal (de @userinfobot)</span>
+        </div>
+        <input class="form-input" id="tg-chatid" placeholder="12345678" style="width:140px">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <button class="btn btn-primary" id="btn-tg-save">💾 Guardar</button>
+        <button class="btn btn-secondary" id="btn-tg-test">📤 Enviar prueba</button>
+        <span id="tg-status" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+      <div style="margin-top:14px;background:var(--bg2);border-radius:var(--radius-sm);padding:12px;font-size:12px;color:var(--text2);line-height:1.7">
+        <strong style="color:var(--text)">Comandos disponibles en el chat:</strong><br>
+        <code style="color:var(--accent)">/estado</code> — Ver estado de todos los canales<br>
+        <code style="color:var(--accent)">/on1</code> … <code style="color:var(--accent)">/on8</code> — Encender canal<br>
+        <code style="color:var(--accent)">/off1</code> … <code style="color:var(--accent)">/off8</code> — Apagar canal<br>
+        <code style="color:var(--accent)">/todos_on</code> · <code style="color:var(--accent)">/todos_off</code> — Control total<br>
+        <code style="color:var(--accent)">/escenas</code> — Listar escenas<br>
+        <code style="color:var(--accent)">/escena [nombre]</code> — Activar una escena
+      </div>
+    </div>
+
     <!-- Datos / Exportar -->
     <div class="settings-card">
       <h3>💾 Datos</h3>
@@ -790,6 +833,7 @@ let state = {
   theme: 'dark',
   bgImage: null,
   relayLogic: 'low',
+  telegram: { token: '', chatId: '', enabled: false },
 };
 
 let ws = null;
@@ -821,6 +865,7 @@ function loadState() {
       if (parsed.theme) state.theme = parsed.theme;
       if (parsed.bgImage) state.bgImage = parsed.bgImage;
       if (parsed.relayLogic) state.relayLogic = parsed.relayLogic;
+      if (parsed.telegram) state.telegram = parsed.telegram;
     }
   } catch(e) {}
 }
@@ -1429,6 +1474,7 @@ function checkSchedules() {
     if (!alreadyFiredToday && Math.abs(nowMinutes - targetMinutes) <= 1) {
       activateScene(scene.id);
       addLog(`Escena programada: "${scene.name}"`);
+      sendTelegram(`⏰ <b>Escena programada:</b> ${scene.icon} ${scene.name}`);
       lastFiredRules[key] = Date.now();
     }
     const diff = targetMinutes - nowMinutes;
@@ -1481,6 +1527,9 @@ function fireRule(rule) {
       saveState(); renderChannels(); updateSubtitle();
       break;
   }
+  // Notificación Telegram
+  const actionText = getActionText(rule);
+  sendTelegram(`${getTriggerIcon(rule.trigger)} <b>Automatización:</b> ${rule.name}\n${getTriggerText(rule)} → ${actionText}`);
 }
 
 function getMinutesFromDate(d) { return d.getHours() * 60 + d.getMinutes(); }
@@ -1576,6 +1625,152 @@ function removeBgImage() {
   saveState();
 }
 
+// ── TELEGRAM ─────────────────────────────────────────
+async function sendTelegram(msg) {
+  const { token, chatId, enabled } = state.telegram;
+  if (!enabled || !token || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' }),
+    });
+  } catch(e) {}
+}
+
+// Polling de comandos entrantes desde Telegram
+let tgOffset = 0;
+let tgPollingTimer = null;
+
+function startTelegramPolling() {
+  if (tgPollingTimer) clearInterval(tgPollingTimer);
+  if (!state.telegram.enabled || !state.telegram.token) return;
+  tgPollingTimer = setInterval(pollTelegram, 3000);
+}
+
+async function pollTelegram() {
+  const { token, chatId } = state.telegram;
+  if (!token) return;
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/getUpdates?offset=${tgOffset}&timeout=1`);
+    const data = await r.json();
+    if (!data.ok) return;
+    for (const update of data.result) {
+      tgOffset = update.update_id + 1;
+      const msg = update.message;
+      if (!msg || !msg.text) continue;
+      // Solo aceptar mensajes del chat ID configurado
+      if (String(msg.chat.id) !== String(chatId)) continue;
+      await handleTelegramCommand(msg.text.trim().toLowerCase(), msg.chat.id);
+    }
+  } catch(e) {}
+}
+
+async function handleTelegramCommand(text, fromChatId) {
+  const { token } = state.telegram;
+  const reply = async (msg) => {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: fromChatId, text: msg, parse_mode: 'HTML' }),
+    });
+  };
+
+  if (text === '/estado' || text === '/status') {
+    const lines = state.channels.map(ch => `${ch.on ? '🟢' : '⚫'} <b>${ch.name}</b>: ${ch.on ? 'ENCENDIDO' : 'APAGADO'}`);
+    await reply(`💡 <b>Estado de canales</b>\n\n${lines.join('\n')}`);
+
+  } else if (text === '/todos_on' || text === '/all_on') {
+    setAllChannels(true);
+    await reply('✅ Todos los canales <b>ENCENDIDOS</b>');
+
+  } else if (text === '/todos_off' || text === '/all_off') {
+    setAllChannels(false);
+    await reply('✅ Todos los canales <b>APAGADOS</b>');
+
+  } else if (/^\/on([1-8])$/.test(text)) {
+    const id = parseInt(text.match(/^\/on([1-8])$/)[1]) - 1;
+    state.channels[id].on = true;
+    wsSendRelay(id, true);
+    saveState(); renderChannels(); updateSubtitle();
+    await reply(`✅ <b>${state.channels[id].name}</b> ENCENDIDO`);
+
+  } else if (/^\/off([1-8])$/.test(text)) {
+    const id = parseInt(text.match(/^\/off([1-8])$/)[1]) - 1;
+    state.channels[id].on = false;
+    wsSendRelay(id, false);
+    saveState(); renderChannels(); updateSubtitle();
+    await reply(`✅ <b>${state.channels[id].name}</b> APAGADO`);
+
+  } else if (text === '/escenas' || text === '/scenes') {
+    if (!state.scenes.length) { await reply('No hay escenas guardadas.'); return; }
+    const list = state.scenes.map((s, i) => `${s.icon} /escena_${i+1} — ${s.name}`).join('\n');
+    await reply(`🎭 <b>Escenas disponibles:</b>\n\n${list}`);
+
+  } else if (/^\/escena_(\d+)$/.test(text)) {
+    const idx = parseInt(text.match(/^\/escena_(\d+)$/)[1]) - 1;
+    if (idx >= 0 && idx < state.scenes.length) {
+      activateScene(state.scenes[idx].id);
+      await reply(`✅ Escena <b>${state.scenes[idx].name}</b> activada`);
+    } else {
+      await reply('Escena no encontrada. Usá /escenas para ver la lista.');
+    }
+
+  } else if (text.startsWith('/escena ')) {
+    const name = text.replace('/escena ', '').trim();
+    const scene = state.scenes.find(s => s.name.toLowerCase() === name);
+    if (scene) {
+      activateScene(scene.id);
+      await reply(`✅ Escena <b>${scene.name}</b> activada`);
+    } else {
+      await reply(`❌ No encontré la escena "<b>${name}</b>". Usá /escenas para ver la lista.`);
+    }
+
+  } else if (text === '/ayuda' || text === '/help' || text === '/start') {
+    await reply(
+      `💡 <b>ControlLuces WiFi</b>\n\n` +
+      `/estado — Estado de todos los canales\n` +
+      `/on1 … /on8 — Encender canal\n` +
+      `/off1 … /off8 — Apagar canal\n` +
+      `/todos_on — Encender todos\n` +
+      `/todos_off — Apagar todos\n` +
+      `/escenas — Listar escenas\n` +
+      `/escena [nombre] — Activar escena\n` +
+      `/ayuda — Esta ayuda`
+    );
+  }
+}
+
+function saveTelegramSettings() {
+  const token = document.getElementById('tg-token').value.trim();
+  const chatId = document.getElementById('tg-chatid').value.trim();
+  const enabled = document.getElementById('tg-enabled').checked;
+  state.telegram = { token, chatId, enabled };
+  saveState();
+  startTelegramPolling();
+  document.getElementById('tg-status').textContent = '✓ Guardado';
+  setTimeout(() => document.getElementById('tg-status').textContent = '', 2000);
+}
+
+async function testTelegram() {
+  const statusEl = document.getElementById('tg-status');
+  statusEl.textContent = 'Enviando...';
+  const { token, chatId } = state.telegram;
+  if (!token || !chatId) { statusEl.textContent = '⚠️ Ingresá token y chat ID'; return; }
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: '✅ <b>ControlLuces WiFi</b> conectado correctamente!', parse_mode: 'HTML' }),
+    });
+    const d = await r.json();
+    statusEl.textContent = d.ok ? '✓ Mensaje enviado!' : '❌ Error: ' + d.description;
+  } catch(e) {
+    statusEl.textContent = '❌ Error de red';
+  }
+  setTimeout(() => statusEl.textContent = '', 4000);
+}
+
 // ── LOG DE EVENTOS ───────────────────────────────────
 function addLog(msg) {
   const list = document.getElementById('event-log');
@@ -1642,6 +1837,10 @@ function renderAll() {
   document.getElementById('esp-ip').value = state.connection.ip || '';
   document.getElementById('esp-port').value = state.connection.port || 80;
   document.getElementById('relay-logic').value = state.relayLogic || 'low';
+  // Telegram
+  document.getElementById('tg-enabled').checked = state.telegram.enabled;
+  document.getElementById('tg-token').value = state.telegram.token || '';
+  document.getElementById('tg-chatid').value = state.telegram.chatId || '';
   // Theme
   document.documentElement.setAttribute('data-theme', state.theme);
   document.getElementById('theme-btn').textContent = state.theme === 'dark' ? '🌙' : '☀️';
@@ -1754,8 +1953,13 @@ function init() {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
   });
 
+  // Telegram
+  document.getElementById('btn-tg-save').addEventListener('click', saveTelegramSettings);
+  document.getElementById('btn-tg-test').addEventListener('click', testTelegram);
+
   // Scheduler
   startScheduler();
+  startTelegramPolling();
 
   // Auto-fetch sun if we have location
   if (state.location.lat && state.sun.date !== new Date().toDateString()) {
