@@ -975,6 +975,8 @@ function toggleChannel(id) {
   saveState();
   renderChannelCard(id);
   updateSubtitle();
+  const ch = state.channels[id];
+  sendTelegram(`${ch.on ? '🟢' : '⚫'} <b>${ch.name}</b> ${ch.on ? 'ENCENDIDO' : 'APAGADO'} manualmente`);
 }
 
 function setAllChannels(on) {
@@ -983,6 +985,7 @@ function setAllChannels(on) {
   saveState();
   renderChannels();
   updateSubtitle();
+  sendTelegram(`${on ? '🟢' : '⚫'} Todos los canales ${on ? 'ENCENDIDOS' : 'APAGADOS'} manualmente`);
 }
 
 function pulseChannel(id) {
