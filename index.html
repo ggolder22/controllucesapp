@@ -1198,7 +1198,8 @@ function updateRuleTriggerUI() {
 function updateRuleActionUI() {
   const action = document.getElementById('rule-action-type').value;
   document.getElementById('rule-scene-group').style.display = action === 'scene' ? '' : 'none';
-  document.getElementById('rule-channels-group').style.display = action === 'channels' ? '' : 'none';
+  const chGroup = document.getElementById('rule-channels-group');
+  action === 'channels' ? chGroup.classList.remove('hidden') : chGroup.classList.add('hidden');
 }
 
 function updateRuleSceneSelect() {
