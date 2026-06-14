@@ -368,9 +368,15 @@ main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
 }
 
 /* ===== RESPONSIVE ===== */
+@media (max-width: 600px) {
+  #next-event-header { display: none !important; }
+  #status-text { display: none; }
+  #next-event-mobile { display: flex !important; }
+}
 @media (max-width: 540px) {
   header { padding: 10px 12px; gap: 8px; }
   .logo span { display: none; }
+  #clock { font-size: 12px; }
   main { padding: 14px; }
   .channels-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .channel-card { padding: 12px; }
@@ -378,6 +384,11 @@ main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
   .channel-name { font-size: 13px; }
   .form-row { grid-template-columns: 1fr; }
   .icon-grid { grid-template-columns: repeat(5, 1fr); }
+  .auto-grid { grid-template-columns: 1fr; }
+  .scenes-grid { grid-template-columns: 1fr; }
+  .ch-checkboxes { grid-template-columns: 1fr; }
+  .modal { padding: 16px; }
+  .sun-time { font-size: 16px; }
 }
 @media (min-width: 900px) {
   .channels-grid { grid-template-columns: repeat(4, 1fr); }
@@ -426,6 +437,9 @@ main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
   <button class="tab-btn" data-tab="auto">🌅 Automatización</button>
   <button class="tab-btn" data-tab="settings">⚙️ Configuración</button>
 </nav>
+
+<!-- Banner mobile para próximo evento -->
+<div id="next-event-mobile" class="next-event hidden" style="display:none;margin:8px 12px;font-size:12px"></div>
 
 <!-- MAIN -->
 <main>
@@ -874,6 +888,14 @@ function loadState() {
 }
 
 // ── CONEXIÓN WEBSOCKET ───────────────────────────────
+function buildWsUrl(ip, port) {
+  // IPs locales usan ws://, dominios cloud usan wss://
+  const isLocal = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|localhost|127\.)/i.test(ip);
+  const scheme = isLocal ? 'ws' : 'wss';
+  const portStr = isLocal ? `:${port}` : '';
+  return `${scheme}://${ip}${portStr}/ws`;
+}
+
 function wsConnect() {
   if (ws) { ws.close(); ws = null; }
   clearTimeout(wsReconnectTimer);
@@ -881,7 +903,7 @@ function wsConnect() {
   if (!ip) return;
 
   try {
-    ws = new WebSocket(`ws://${ip}:${port}/ws`);
+    ws = new WebSocket(buildWsUrl(ip, port));
     ws.onopen = () => {
       state.connection.status = 'connected';
       updateConnectionUI();
@@ -1489,13 +1511,16 @@ function checkSchedules() {
     }
   });
 
-  // Show next event in header
+  // Mostrar próximo evento en header (desktop) y banner (mobile)
+  const txt = nextEvent ? `⏰ ${nextEvent.name} a las ${nextEvent.time}` : '';
   const hdr = document.getElementById('next-event-header');
+  const mob = document.getElementById('next-event-mobile');
   if (nextEvent) {
-    hdr.textContent = `⏰ ${nextEvent.name} a las ${nextEvent.time}`;
-    hdr.classList.remove('hidden');
+    hdr.textContent = txt; hdr.classList.remove('hidden');
+    mob.textContent = txt;
   } else {
     hdr.classList.add('hidden');
+    mob.textContent = '';
   }
 }
 
