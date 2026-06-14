@@ -1632,29 +1632,191 @@ function removeBgImage() {
 }
 
 // ── TELEGRAM ─────────────────────────────────────────
-async function sendTelegram(msg) {
-  const { token, chatId, enabled } = state.telegram;
-  if (!enabled) { addLog('Telegram: notificaciones desactivadas (activá el toggle en Configuración)'); return; }
-  if (!token || !chatId) { addLog('Telegram: falta token o chat ID en Configuración'); return; }
-  try {
-    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' }),
-    });
-    const d = await r.json();
-    if (!d.ok) addLog('Telegram error: ' + d.description);
-  } catch(e) { addLog('Telegram: error de red'); }
-}
-
-// Polling de comandos entrantes desde Telegram
 let tgOffset = 0;
 let tgPollingTimer = null;
+let tgChannelMenuMsgId = null; // ID del mensaje de canales para actualizar inline keyboard
+
+async function tgPost(method, body) {
+  const { token } = state.telegram;
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return await r.json();
+  } catch(e) { return { ok: false }; }
+}
+
+async function sendTelegram(msg) {
+  const { token, chatId, enabled } = state.telegram;
+  if (!enabled) { addLog('Telegram: desactivado (activá el toggle en Configuración)'); return; }
+  if (!token || !chatId) { addLog('Telegram: falta token o chat ID'); return; }
+  const d = await tgPost('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
+  if (!d.ok) addLog('Telegram error: ' + d.description);
+}
+
+// Menú principal — reply keyboard persistente abajo del chat
+async function tgSendMainMenu(chatId) {
+  await tgPost('sendMessage', {
+    chat_id: chatId,
+    text: '💡 <b>ControlLuces WiFi</b>\nUsá los botones o escribí un comando:',
+    parse_mode: 'HTML',
+    reply_markup: {
+      keyboard: [
+        ['📊 Estado', '💡 Canales'],
+        ['🟢 Todos ON', '🔴 Todos OFF'],
+        ['🎭 Escenas', '❓ Ayuda'],
+      ],
+      resize_keyboard: true,
+      persistent: true,
+    }
+  });
+}
+
+// Menú de canales — inline keyboard con estado actual
+async function tgSendChannelMenu(chatId, editMsgId = null) {
+  const buttons = [];
+  for (let i = 0; i < 8; i += 2) {
+    const row = [];
+    for (let j = i; j < Math.min(i + 2, 8); j++) {
+      const ch = state.channels[j];
+      row.push({ text: `${ch.on ? '🟢' : '⚫'} ${ch.name}`, callback_data: `ch_${ch.id}` });
+    }
+    buttons.push(row);
+  }
+  buttons.push([
+    { text: '🟢 Todos ON',  callback_data: 'all_on'  },
+    { text: '🔴 Todos OFF', callback_data: 'all_off' },
+  ]);
+  const markup = { inline_keyboard: buttons };
+
+  if (editMsgId) {
+    // Actualizar solo los botones del mensaje existente
+    await tgPost('editMessageReplyMarkup', { chat_id: chatId, message_id: editMsgId, reply_markup: markup });
+  } else {
+    const d = await tgPost('sendMessage', {
+      chat_id: chatId,
+      text: '💡 <b>Control de Canales</b>\nTocá un canal para encender o apagar:',
+      parse_mode: 'HTML',
+      reply_markup: markup,
+    });
+    if (d.ok) tgChannelMenuMsgId = d.result.message_id;
+  }
+}
+
+// Menú de escenas — inline keyboard
+async function tgSendScenesMenu(chatId) {
+  if (!state.scenes.length) {
+    await tgPost('sendMessage', { chat_id: chatId, text: '🎭 No hay escenas guardadas. Creá una en la app.' });
+    return;
+  }
+  const buttons = state.scenes.map(s => [{ text: `${s.icon} ${s.name}`, callback_data: `scene_${s.id}` }]);
+  await tgPost('sendMessage', {
+    chat_id: chatId,
+    text: '🎭 <b>Escenas</b>\nElegí una para activarla:',
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
+// Responder a un callback query (obligatorio para quitar el "spinner" del botón)
+async function tgAnswer(callbackId, text = '') {
+  await tgPost('answerCallbackQuery', { callback_query_id: callbackId, text });
+}
+
+// Manejar pulsaciones de botones inline
+async function handleCallbackQuery(cb) {
+  const { chatId } = state.telegram;
+  if (String(cb.from.id) !== String(chatId)) return;
+  const data = cb.data;
+  const msgId = cb.message.message_id;
+  const fromChatId = cb.message.chat.id;
+
+  if (/^ch_(\d+)$/.test(data)) {
+    const id = parseInt(data.match(/^ch_(\d+)$/)[1]);
+    state.channels[id].on = !state.channels[id].on;
+    wsSendRelay(id, state.channels[id].on);
+    saveState(); renderChannels(); updateSubtitle();
+    await tgAnswer(cb.id, `${state.channels[id].name}: ${state.channels[id].on ? '🟢 ON' : '⚫ OFF'}`);
+    await tgSendChannelMenu(fromChatId, msgId);
+
+  } else if (data === 'all_on') {
+    setAllChannels(true);
+    await tgAnswer(cb.id, '🟢 Todos encendidos');
+    await tgSendChannelMenu(fromChatId, msgId);
+
+  } else if (data === 'all_off') {
+    setAllChannels(false);
+    await tgAnswer(cb.id, '🔴 Todos apagados');
+    await tgSendChannelMenu(fromChatId, msgId);
+
+  } else if (/^scene_(\d+)$/.test(data)) {
+    const sceneId = parseInt(data.match(/^scene_(\d+)$/)[1]);
+    const scene = state.scenes.find(s => s.id === sceneId);
+    if (scene) {
+      activateScene(sceneId);
+      await tgAnswer(cb.id, `✅ "${scene.name}" activada`);
+    }
+  }
+}
+
+// Manejar mensajes de texto (comandos y botones del reply keyboard)
+async function handleTelegramCommand(text, fromChatId) {
+  text = text.split('@')[0].trim().toLowerCase();
+
+  if (text === '/start' || text === '/ayuda' || text === '/help' || text === '❓ ayuda') {
+    await tgSendMainMenu(fromChatId);
+
+  } else if (text === '/estado' || text === '/status' || text === '📊 estado') {
+    const lines = state.channels.map(ch => `${ch.on ? '🟢' : '⚫'} <b>${ch.name}</b>: ${ch.on ? 'ENCENDIDO' : 'APAGADO'}`);
+    await tgPost('sendMessage', { chat_id: fromChatId, text: `💡 <b>Estado de canales</b>\n\n${lines.join('\n')}`, parse_mode: 'HTML' });
+
+  } else if (text === '💡 canales' || text === '/canales') {
+    tgChannelMenuMsgId = null;
+    await tgSendChannelMenu(fromChatId);
+
+  } else if (text === '🟢 todos on' || text === '/todos_on') {
+    setAllChannels(true);
+    await tgPost('sendMessage', { chat_id: fromChatId, text: '✅ Todos los canales <b>ENCENDIDOS</b>', parse_mode: 'HTML' });
+
+  } else if (text === '🔴 todos off' || text === '/todos_off') {
+    setAllChannels(false);
+    await tgPost('sendMessage', { chat_id: fromChatId, text: '✅ Todos los canales <b>APAGADOS</b>', parse_mode: 'HTML' });
+
+  } else if (text === '🎭 escenas' || text === '/escenas') {
+    await tgSendScenesMenu(fromChatId);
+
+  } else if (/^\/on([1-8])$/.test(text)) {
+    const id = parseInt(text.match(/^\/on([1-8])$/)[1]) - 1;
+    state.channels[id].on = true;
+    wsSendRelay(id, true);
+    saveState(); renderChannels(); updateSubtitle();
+    await tgPost('sendMessage', { chat_id: fromChatId, text: `✅ <b>${state.channels[id].name}</b> ENCENDIDO`, parse_mode: 'HTML' });
+
+  } else if (/^\/off([1-8])$/.test(text)) {
+    const id = parseInt(text.match(/^\/off([1-8])$/)[1]) - 1;
+    state.channels[id].on = false;
+    wsSendRelay(id, false);
+    saveState(); renderChannels(); updateSubtitle();
+    await tgPost('sendMessage', { chat_id: fromChatId, text: `✅ <b>${state.channels[id].name}</b> APAGADO`, parse_mode: 'HTML' });
+
+  } else if (text.startsWith('/escena ')) {
+    const name = text.replace('/escena ', '').trim();
+    const scene = state.scenes.find(s => s.name.toLowerCase() === name);
+    if (scene) {
+      activateScene(scene.id);
+      await tgPost('sendMessage', { chat_id: fromChatId, text: `✅ Escena <b>${scene.name}</b> activada`, parse_mode: 'HTML' });
+    } else {
+      await tgPost('sendMessage', { chat_id: fromChatId, text: `❌ No encontré la escena "<b>${name}</b>"`, parse_mode: 'HTML' });
+    }
+  }
+}
 
 function startTelegramPolling() {
   if (tgPollingTimer) clearInterval(tgPollingTimer);
   if (!state.telegram.enabled || !state.telegram.token) return;
-  tgPollingTimer = setInterval(pollTelegram, 3000);
+  tgPollingTimer = setInterval(pollTelegram, 2000);
 }
 
 async function pollTelegram() {
@@ -1666,90 +1828,18 @@ async function pollTelegram() {
     if (!data.ok) return;
     for (const update of data.result) {
       tgOffset = update.update_id + 1;
+      // Botones inline
+      if (update.callback_query) {
+        await handleCallbackQuery(update.callback_query);
+        continue;
+      }
+      // Mensajes de texto
       const msg = update.message;
       if (!msg || !msg.text) continue;
-      // Solo aceptar mensajes del chat ID configurado
       if (String(msg.chat.id) !== String(chatId)) continue;
-      await handleTelegramCommand(msg.text.trim().toLowerCase(), msg.chat.id);
+      await handleTelegramCommand(msg.text.trim(), msg.chat.id);
     }
   } catch(e) {}
-}
-
-async function handleTelegramCommand(text, fromChatId) {
-  // Telegram a veces agrega @botname al comando: /on1@MiBot → /on1
-  text = text.split('@')[0].trim().toLowerCase();
-  const { token } = state.telegram;
-  const reply = async (msg) => {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: fromChatId, text: msg, parse_mode: 'HTML' }),
-    });
-  };
-
-  if (text === '/estado' || text === '/status') {
-    const lines = state.channels.map(ch => `${ch.on ? '🟢' : '⚫'} <b>${ch.name}</b>: ${ch.on ? 'ENCENDIDO' : 'APAGADO'}`);
-    await reply(`💡 <b>Estado de canales</b>\n\n${lines.join('\n')}`);
-
-  } else if (text === '/todos_on' || text === '/all_on') {
-    setAllChannels(true);
-    await reply('✅ Todos los canales <b>ENCENDIDOS</b>');
-
-  } else if (text === '/todos_off' || text === '/all_off') {
-    setAllChannels(false);
-    await reply('✅ Todos los canales <b>APAGADOS</b>');
-
-  } else if (/^\/on([1-8])$/.test(text)) {
-    const id = parseInt(text.match(/^\/on([1-8])$/)[1]) - 1;
-    state.channels[id].on = true;
-    wsSendRelay(id, true);
-    saveState(); renderChannels(); updateSubtitle();
-    await reply(`✅ <b>${state.channels[id].name}</b> ENCENDIDO`);
-
-  } else if (/^\/off([1-8])$/.test(text)) {
-    const id = parseInt(text.match(/^\/off([1-8])$/)[1]) - 1;
-    state.channels[id].on = false;
-    wsSendRelay(id, false);
-    saveState(); renderChannels(); updateSubtitle();
-    await reply(`✅ <b>${state.channels[id].name}</b> APAGADO`);
-
-  } else if (text === '/escenas' || text === '/scenes') {
-    if (!state.scenes.length) { await reply('No hay escenas guardadas.'); return; }
-    const list = state.scenes.map((s, i) => `${s.icon} /escena_${i+1} — ${s.name}`).join('\n');
-    await reply(`🎭 <b>Escenas disponibles:</b>\n\n${list}`);
-
-  } else if (/^\/escena_(\d+)$/.test(text)) {
-    const idx = parseInt(text.match(/^\/escena_(\d+)$/)[1]) - 1;
-    if (idx >= 0 && idx < state.scenes.length) {
-      activateScene(state.scenes[idx].id);
-      await reply(`✅ Escena <b>${state.scenes[idx].name}</b> activada`);
-    } else {
-      await reply('Escena no encontrada. Usá /escenas para ver la lista.');
-    }
-
-  } else if (text.startsWith('/escena ')) {
-    const name = text.replace('/escena ', '').trim();
-    const scene = state.scenes.find(s => s.name.toLowerCase() === name);
-    if (scene) {
-      activateScene(scene.id);
-      await reply(`✅ Escena <b>${scene.name}</b> activada`);
-    } else {
-      await reply(`❌ No encontré la escena "<b>${name}</b>". Usá /escenas para ver la lista.`);
-    }
-
-  } else if (text === '/ayuda' || text === '/help' || text === '/start') {
-    await reply(
-      `💡 <b>ControlLuces WiFi</b>\n\n` +
-      `/estado — Estado de todos los canales\n` +
-      `/on1 … /on8 — Encender canal\n` +
-      `/off1 … /off8 — Apagar canal\n` +
-      `/todos_on — Encender todos\n` +
-      `/todos_off — Apagar todos\n` +
-      `/escenas — Listar escenas\n` +
-      `/escena [nombre] — Activar escena\n` +
-      `/ayuda — Esta ayuda`
-    );
-  }
 }
 
 function saveTelegramSettings() {
