@@ -924,15 +924,18 @@ function wsConnect() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'status') {
-          // Update relay states from ESP32
-          msg.relays.forEach((v, i) => {
-            if (i < 8) state.channels[i].on = v;
-          });
+          msg.relays.forEach((v, i) => { if (i < 8) state.channels[i].on = v; });
           renderChannels();
           updateSubtitle();
         }
       } catch(err) {}
     };
+
+    // Keepalive: evita que Render/proxies cierren la conexión inactiva
+    const keepaliveTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ cmd: 'ping' }));
+    }, 20000);
+    ws.addEventListener('close', () => clearInterval(keepaliveTimer));
   } catch(err) {
     state.connection.status = 'error';
     updateConnectionUI();

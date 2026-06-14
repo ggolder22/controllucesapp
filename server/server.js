@@ -34,15 +34,32 @@ function buildStatus() {
   };
 }
 
+// Heartbeat: ping cada 25s para mantener conexiones vivas en Render/proxies
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (!ws.isAlive) { ws.terminate(); return; }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 25000);
+
+wss.on('close', () => clearInterval(heartbeatInterval));
+
 wss.on('connection', (ws, req) => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
   const ip = req.socket.remoteAddress;
-  console.log(`[WS] Cliente conectado: ${ip}`);
+  console.log(`[WS] Cliente conectado: ${ip} (total: ${wss.clients.size})`);
   ws.send(JSON.stringify(buildStatus()));
 
   ws.on('message', (data) => {
     try {
       const msg = JSON.parse(data);
       switch (msg.cmd) {
+        case 'ping':
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
         case 'getStatus':
           broadcast(buildStatus());
           break;
@@ -78,7 +95,7 @@ wss.on('connection', (ws, req) => {
     } catch (e) {}
   });
 
-  ws.on('close', () => console.log(`[WS] Cliente desconectado: ${ip}`));
+  ws.on('close', () => console.log(`[WS] Cliente desconectado: ${ip} (total: ${wss.clients.size})`));
 });
 
 // ── REST API (mismo contrato que el ESP32) ────────────────────────────────────
