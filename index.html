@@ -1634,14 +1634,17 @@ function removeBgImage() {
 // ── TELEGRAM ─────────────────────────────────────────
 async function sendTelegram(msg) {
   const { token, chatId, enabled } = state.telegram;
-  if (!enabled || !token || !chatId) return;
+  if (!enabled) { addLog('Telegram: notificaciones desactivadas (activá el toggle en Configuración)'); return; }
+  if (!token || !chatId) { addLog('Telegram: falta token o chat ID en Configuración'); return; }
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' }),
     });
-  } catch(e) {}
+    const d = await r.json();
+    if (!d.ok) addLog('Telegram error: ' + d.description);
+  } catch(e) { addLog('Telegram: error de red'); }
 }
 
 // Polling de comandos entrantes desde Telegram
