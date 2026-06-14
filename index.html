@@ -606,7 +606,10 @@ main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
         <button class="btn btn-secondary" id="btn-tg-test">📤 Enviar prueba</button>
         <span id="tg-status" style="font-size:12px;color:var(--text2)"></span>
       </div>
-      <div style="margin-top:14px;background:var(--bg2);border-radius:var(--radius-sm);padding:12px;font-size:12px;color:var(--text2);line-height:1.7">
+      <div style="margin-top:10px;background:rgba(210,153,34,0.1);border:1px solid rgba(210,153,34,0.3);border-radius:var(--radius-sm);padding:10px;font-size:12px;color:var(--warn)">
+        ⚠️ Los comandos de Telegram solo funcionan mientras esta pestaña esté abierta en el navegador. Para control 24/7 sin depender del browser, el ESP32 tiene el bot integrado.
+      </div>
+      <div style="margin-top:10px;background:var(--bg2);border-radius:var(--radius-sm);padding:12px;font-size:12px;color:var(--text2);line-height:1.7">
         <strong style="color:var(--text)">Comandos disponibles en el chat:</strong><br>
         <code style="color:var(--accent)">/estado</code> — Ver estado de todos los canales<br>
         <code style="color:var(--accent)">/on1</code> … <code style="color:var(--accent)">/on8</code> — Encender canal<br>
@@ -1667,6 +1670,8 @@ async function pollTelegram() {
 }
 
 async function handleTelegramCommand(text, fromChatId) {
+  // Telegram a veces agrega @botname al comando: /on1@MiBot → /on1
+  text = text.split('@')[0].trim().toLowerCase();
   const { token } = state.telegram;
   const reply = async (msg) => {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
