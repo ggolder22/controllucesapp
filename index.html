@@ -510,9 +510,10 @@ main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
         <input class="form-input" id="loc-lat" placeholder="Latitud" type="number" step="0.0001">
         <input class="form-input" id="loc-lng" placeholder="Longitud" type="number" step="0.0001">
       </div>
-      <div style="display:flex;gap:8px;margin-top:10px">
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
         <button class="btn btn-secondary btn-sm" id="btn-geolocate">📍 Detectar</button>
         <button class="btn btn-primary btn-sm" id="btn-fetch-sun">🔄 Actualizar sol</button>
+        <span id="sun-next-refresh" style="font-size:11px;color:var(--text2)"></span>
       </div>
     </div>
 
@@ -1391,36 +1392,52 @@ function getActionText(rule) {
 }
 
 // ── AMANECER / ATARDECER ─────────────────────────────
-async function fetchSunData() {
-  const lat = parseFloat(document.getElementById('loc-lat').value);
-  const lng = parseFloat(document.getElementById('loc-lng').value);
-  if (isNaN(lat) || isNaN(lng)) { alert('Ingresa latitud y longitud válidas'); return; }
+let sunFetching = false;
+let lastSunFetchKey = ''; // evita doble fetch en el mismo slot horario
 
-  state.location.lat = lat;
-  state.location.lng = lng;
+async function fetchSunData(manual = true) {
+  if (sunFetching) return;
+  const lat = parseFloat(state.location.lat || document.getElementById('loc-lat').value);
+  const lng = parseFloat(state.location.lng || document.getElementById('loc-lng').value);
+  if (isNaN(lat) || isNaN(lng)) {
+    if (manual) alert('Ingresa latitud y longitud válidas');
+    return;
+  }
+
+  sunFetching = true;
   document.getElementById('sun-rise').textContent = '...';
   document.getElementById('sun-set').textContent = '...';
 
   try {
-    const url = `${SUN_API}?lat=${lat}&lng=${lng}&formatted=0`;
-    const r = await fetch(url);
+    const r = await fetch(`${SUN_API}?lat=${lat}&lng=${lng}&formatted=0`);
     const data = await r.json();
     if (data.status !== 'OK') throw new Error('API error');
     const sunrise = new Date(data.results.sunrise);
-    const sunset = new Date(data.results.sunset);
+    const sunset  = new Date(data.results.sunset);
     state.sun = {
       sunrise: sunrise.toISOString(),
-      sunset: sunset.toISOString(),
-      date: new Date().toDateString(),
+      sunset:  sunset.toISOString(),
+      date:    new Date().toDateString(),
     };
+    const now = new Date();
+    lastSunFetchKey = `${now.toDateString()}-${now.getHours()}`;
     updateSunUI();
     saveState(); syncConfig();
-    addLog(`Sol: ↑ ${formatTime(sunrise)} ↓ ${formatTime(sunset)}`);
+    addLog(`☀️ Sol actualizado: ↑ ${formatTime(sunrise)} ↓ ${formatTime(sunset)}`);
   } catch(e) {
     document.getElementById('sun-rise').textContent = 'Error';
     document.getElementById('sun-set').textContent = 'Error';
-    addLog('Error al obtener datos del sol. Revisa la conexión a internet.');
+    if (manual) addLog('Error al obtener datos del sol. Revisa la conexión a internet.');
+  } finally {
+    sunFetching = false;
   }
+}
+
+function getNextSunRefreshText() {
+  const h = new Date().getHours();
+  if (h < 1)  return 'Hoy 01:00';
+  if (h < 13) return 'Hoy 13:00';
+  return 'Mañana 01:00';
 }
 
 function updateSunUI() {
@@ -1431,6 +1448,10 @@ function updateSunUI() {
   if (state.sun.sunset) {
     document.getElementById('sun-set').textContent = formatTime(new Date(state.sun.sunset));
     document.getElementById('sun-set').className = 'sun-time';
+  }
+  const nextEl = document.getElementById('sun-next-refresh');
+  if (nextEl && state.location.lat) {
+    nextEl.textContent = `🔁 Auto-actualización: ${getNextSunRefreshText()}`;
   }
 }
 
@@ -1481,9 +1502,16 @@ function checkSchedules() {
   const todayStr = now.toDateString();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
-  // Refresh sun data if stale
-  if (state.sun.date !== todayStr && state.location.lat) {
-    fetchSunData();
+  // Auto-refresh del sol: si los datos son de otro día, o si es la 1:00 AM / 13:00
+  if (state.location.lat && !sunFetching) {
+    const h = now.getHours(), m = now.getMinutes();
+    const slotKey = `${todayStr}-${h}`;
+    const stale   = state.sun.date !== todayStr;
+    const is1am   = h === 1  && m <= 1;
+    const is13pm  = h === 13 && m <= 1;
+    if ((stale || is1am || is13pm) && lastSunFetchKey !== slotKey) {
+      fetchSunData(false);
+    }
   }
 
   let nextEvent = null;
@@ -2154,9 +2182,9 @@ function init() {
   startScheduler();
   startTelegramPolling();
 
-  // Auto-fetch sun if we have location
+  // Auto-fetch sun si los datos son de otro día
   if (state.location.lat && state.sun.date !== new Date().toDateString()) {
-    fetchSunData();
+    fetchSunData(false);
   }
 
   addLog('ControlLuces iniciado · Modo ' + (ws ? 'conectado' : 'simulación'));
