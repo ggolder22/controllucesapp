@@ -565,9 +565,10 @@ main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
         </div>
         <input class="form-input" id="esp-port" placeholder="80" style="width:80px" type="number">
       </div>
-      <div style="margin-top:12px;display:flex;gap:8px">
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-primary" id="btn-connect">Conectar</button>
         <button class="btn btn-secondary" id="btn-disconnect">Desconectar</button>
+        <button class="btn btn-secondary" id="btn-push-config" title="Sube la configuración de ESTE dispositivo al servidor, sobreescribiendo la de los demás">📤 Subir mi config</button>
       </div>
     </div>
 
@@ -939,8 +940,8 @@ function wsConnect() {
           if (msg.hasConfig && msg.config) {
             const serverTs = msg.config.lastModified || 0;
             const localTs  = state.lastModified || 0;
-            if (localTs > serverTs) {
-              // Config local es más reciente → forzar al servidor
+            // Local gana si tiene timestamp explícito y es más reciente que el servidor
+            if (localTs > 0 && localTs > serverTs) {
               syncConfig();
               addLog('Config local más reciente → subida al servidor');
             } else {
@@ -948,7 +949,7 @@ function wsConnect() {
               addLog('Config del servidor aplicada');
             }
           } else {
-            // Servidor sin config — subir la nuestra
+            // Servidor sin config → subir la nuestra
             syncConfig();
             addLog('Servidor sin config → config local subida');
           }
@@ -1518,7 +1519,24 @@ function startScheduler() {
   schedulerTimer = setInterval(checkSchedules, 30000);
 }
 
-let lastFiredRules = {};  // rule.id -> last fire timestamp
+let lastFiredRules = {};  // rule.id -> last fire timestamp (persisted)
+
+function loadLastFiredRules() {
+  try {
+    const saved = localStorage.getItem('lastFiredRules');
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    const today = new Date().toDateString();
+    // Keep only today's entries — discard yesterday's
+    Object.entries(parsed).forEach(([k, v]) => {
+      if (new Date(v).toDateString() === today) lastFiredRules[k] = v;
+    });
+  } catch(e) {}
+}
+
+function saveLastFiredRules() {
+  try { localStorage.setItem('lastFiredRules', JSON.stringify(lastFiredRules)); } catch(e) {}
+}
 
 function checkSchedules() {
   const now = new Date();
@@ -1553,6 +1571,7 @@ function checkSchedules() {
     if (!alreadyFiredToday && Math.abs(nowMinutes - targetMinutes) <= 1) {
       fireRule(rule);
       lastFiredRules[rule.id] = Date.now();
+      saveLastFiredRules();
     }
 
     // Track next event
@@ -1576,6 +1595,7 @@ function checkSchedules() {
       addLog(`Escena programada: "${scene.name}"`);
       sendTelegram(`⏰ <b>Escena programada:</b> ${scene.icon} ${scene.name}`);
       lastFiredRules[key] = Date.now();
+      saveLastFiredRules();
     }
     const diff = targetMinutes - nowMinutes;
     if (diff > 0 && (!nextEvent || diff < nextEvent.diff)) {
@@ -2108,6 +2128,7 @@ function switchTab(tabId) {
 // ── INIT ─────────────────────────────────────────────
 function init() {
   loadState();
+  loadLastFiredRules();
   renderAll();
   updateRuleSceneSelect();
 
@@ -2182,6 +2203,16 @@ function init() {
     wsConnect();
   });
   document.getElementById('btn-disconnect').addEventListener('click', wsDisconnect);
+  document.getElementById('btn-push-config').addEventListener('click', () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      alert('Conectate primero al servidor antes de subir la config.');
+      return;
+    }
+    state.lastModified = Date.now();
+    saveState();
+    syncConfig();
+    addLog('Config subida al servidor manualmente');
+  });
   document.getElementById('relay-logic').addEventListener('change', (e) => {
     state.relayLogic = e.target.value;
     saveState();
