@@ -2199,7 +2199,13 @@ function init() {
     fetchSunData(false);
   }
 
-  addLog('ControlLuces iniciado · Modo ' + (ws ? 'conectado' : 'simulación'));
+  // Auto-conectar al servidor si ya hay una IP/URL guardada
+  if (state.connection.ip) {
+    wsConnect();
+    addLog('Conectando a ' + state.connection.ip + '...');
+  } else {
+    addLog('ControlLuces iniciado · Sin servidor configurado');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
