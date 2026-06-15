@@ -860,6 +860,7 @@ let state = {
   bgImage: null,
   relayLogic: 'low',
   telegram: { token: '', chatId: '', enabled: false },
+  lastModified: 0,
 };
 
 let ws = null;
@@ -892,6 +893,7 @@ function loadState() {
       if (parsed.bgImage) state.bgImage = parsed.bgImage;
       if (parsed.relayLogic) state.relayLogic = parsed.relayLogic;
       if (parsed.telegram) state.telegram = parsed.telegram;
+      if (parsed.lastModified) state.lastModified = parsed.lastModified;
     }
   } catch(e) {}
 }
@@ -935,14 +937,23 @@ function wsConnect() {
         if (msg.type === 'init') {
           msg.relays.forEach((v, i) => { if (i < 8) state.channels[i].on = v; });
           if (msg.hasConfig && msg.config) {
-            applyServerConfig(msg.config);
+            const serverTs = msg.config.lastModified || 0;
+            const localTs  = state.lastModified || 0;
+            if (localTs > serverTs) {
+              // Config local es más reciente → forzar al servidor
+              syncConfig();
+              addLog('Config local más reciente → subida al servidor');
+            } else {
+              applyServerConfig(msg.config);
+              addLog('Config del servidor aplicada');
+            }
           } else {
             // Servidor sin config — subir la nuestra
-            ws.send(JSON.stringify({ cmd: 'uploadConfig', config: buildSyncConfig() }));
+            syncConfig();
+            addLog('Servidor sin config → config local subida');
           }
           renderAll();
           updateSubtitle();
-          addLog('Conectado al servidor · Config sincronizada');
         } else if (msg.type === 'status') {
           msg.relays.forEach((v, i) => { if (i < 8) state.channels[i].on = v; });
           renderChannels();
@@ -2006,13 +2017,14 @@ function importConfig(file) {
 // (excluye bgImage por tamaño y connection.ip que es por dispositivo)
 function buildSyncConfig() {
   return {
-    channels: state.channels.map(ch => ({ name: ch.name, icon: ch.icon, color: ch.color })),
-    scenes:   state.scenes,
-    rules:    state.rules,
-    location: state.location,
-    sun:      state.sun,
-    telegram: state.telegram,
-    theme:    state.theme,
+    channels:     state.channels.map(ch => ({ name: ch.name, icon: ch.icon, color: ch.color })),
+    scenes:       state.scenes,
+    rules:        state.rules,
+    location:     state.location,
+    sun:          state.sun,
+    telegram:     state.telegram,
+    theme:        state.theme,
+    lastModified: state.lastModified || Date.now(),
   };
 }
 
@@ -2037,11 +2049,14 @@ function applyServerConfig(config) {
     document.documentElement.setAttribute('data-theme', state.theme);
     document.getElementById('theme-btn').textContent = state.theme === 'dark' ? '🌙' : '☀️';
   }
+  if (config.lastModified) state.lastModified = config.lastModified;
   saveState(); // cache local
 }
 
 // Envía la config actualizada al servidor para que la distribuya
 function syncConfig() {
+  state.lastModified = Date.now();
+  saveState();
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ cmd: 'setConfig', config: buildSyncConfig() }));
   }
