@@ -754,7 +754,12 @@ main { flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
       <select class="form-select" id="rule-scene-select"></select>
     </div>
     <div class="form-group hidden" id="rule-channels-group">
-      <label class="form-label">Canales</label>
+      <label class="form-label">Acción sobre los canales seleccionados</label>
+      <select class="form-select" id="rule-channel-action">
+        <option value="on">🟢 Encender</option>
+        <option value="off">🔴 Apagar</option>
+      </select>
+      <label class="form-label" style="margin-top:10px">Canales</label>
       <div class="ch-checkboxes" id="rule-ch-checks"></div>
     </div>
     <div class="form-group">
@@ -1247,6 +1252,7 @@ function openRuleModal(ruleId = null) {
   document.getElementById('rule-offset').value = rule ? (rule.offset || 30) : 30;
   document.getElementById('rule-time-input').value = rule ? (rule.time || '') : '';
   document.getElementById('rule-action-type').value = rule ? rule.actionType : 'scene';
+  document.getElementById('rule-channel-action').value = rule ? (rule.channelAction || 'on') : 'on';
   updateRuleSceneSelect();
   if (rule && rule.sceneId) document.getElementById('rule-scene-select').value = rule.sceneId;
 
@@ -1316,7 +1322,8 @@ function saveRuleModal() {
   const channels = [];
   document.querySelectorAll('#rule-ch-checks input[type=checkbox]').forEach((cb, i) => { if (cb.checked) channels.push(i); });
 
-  const ruleData = { name, trigger, offset, time, actionType, sceneId, days, channels, enabled: true };
+  const channelAction = document.getElementById('rule-channel-action').value;
+  const ruleData = { name, trigger, offset, time, actionType, sceneId, days, channels, channelAction, enabled: true };
 
   if (editingRule !== null) {
     const idx = state.rules.findIndex(r => r.id === editingRule);
@@ -1387,7 +1394,10 @@ function getActionText(rule) {
   }
   if (rule.actionType === 'all_on') return 'Encender todos';
   if (rule.actionType === 'all_off') return 'Apagar todos';
-  if (rule.actionType === 'channels') return `Canales: ${(rule.channels||[]).map(i => state.channels[i]?.name || i).join(', ')}`;
+  if (rule.actionType === 'channels') {
+    const verb = rule.channelAction === 'off' ? '🔴 Apagar' : '🟢 Encender';
+    return `${verb}: ${(rule.channels||[]).map(i => state.channels[i]?.name || i).join(', ')}`;
+  }
   return '';
 }
 
@@ -1600,11 +1610,13 @@ function fireRule(rule) {
       break;
     case 'all_on': setAllChannels(true); break;
     case 'all_off': setAllChannels(false); break;
-    case 'channels':
-      (rule.channels || []).forEach(i => { if (state.channels[i]) state.channels[i].on = true; });
+    case 'channels': {
+      const turnOn = rule.channelAction !== 'off';
+      (rule.channels || []).forEach(i => { if (state.channels[i]) state.channels[i].on = turnOn; });
       wsSendRelays(state.channels.map(ch => ch.on));
       saveState(); renderChannels(); updateSubtitle();
       break;
+    }
   }
   // Notificación Telegram
   const actionText = getActionText(rule);
