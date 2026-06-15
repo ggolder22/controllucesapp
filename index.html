@@ -1572,7 +1572,9 @@ function checkSchedules() {
     const lastFire = lastFiredRules[rule.id];
     const alreadyFiredToday = lastFire && new Date(lastFire).toDateString() === todayStr;
 
-    if (!alreadyFiredToday && Math.abs(nowMinutes - targetMinutes) <= 1) {
+    // Servidor conectado: él dispara las reglas. Cliente solo actualiza la UI.
+    const serverOnline = ws && ws.readyState === WebSocket.OPEN;
+    if (!alreadyFiredToday && Math.abs(nowMinutes - targetMinutes) <= 1 && !serverOnline) {
       fireRule(rule);
       lastFiredRules[rule.id] = Date.now();
       saveLastFiredRules();
@@ -1594,7 +1596,8 @@ function checkSchedules() {
     const key = `scene_${scene.id}`;
     const lastFire = lastFiredRules[key];
     const alreadyFiredToday = lastFire && new Date(lastFire).toDateString() === todayStr;
-    if (!alreadyFiredToday && Math.abs(nowMinutes - targetMinutes) <= 1) {
+    const serverOnline = ws && ws.readyState === WebSocket.OPEN;
+    if (!alreadyFiredToday && Math.abs(nowMinutes - targetMinutes) <= 1 && !serverOnline) {
       activateScene(scene.id);
       addLog(`Escena programada: "${scene.name}"`);
       sendTelegram(`⏰ <b>Escena programada:</b> ${scene.icon} ${scene.name}`);
