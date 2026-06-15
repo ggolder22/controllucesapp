@@ -1,6 +1,7 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const http = require('http');
+const fs   = require('fs');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -18,9 +19,26 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 // Estado de relés
 let relayState = Array(8).fill(false);
 
-// Configuración compartida (persiste mientras el servidor corra)
-// Incluye: canales, escenas, reglas, ubicación, sol, telegram, tema
+// Configuración compartida — persiste en archivo para sobrevivir reinicios
+const CONFIG_FILE = './controllucesapp_config.json';
 let sharedConfig = null;
+
+function loadConfigFromFile() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      sharedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      console.log('[Config] Cargada desde archivo');
+    }
+  } catch(e) { console.error('[Config] Error cargando archivo:', e.message); }
+}
+
+function saveConfigToFile() {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(sharedConfig), 'utf8');
+  } catch(e) { console.error('[Config] Error guardando archivo:', e.message); }
+}
+
+loadConfigFromFile();
 
 function broadcastTo(senderWs, data) {
   const msg = JSON.stringify(data);
@@ -110,21 +128,21 @@ wss.on('connection', (ws, req) => {
 
         // ── Configuración compartida ──────────────────
         case 'setConfig':
-          // Un dispositivo actualizó la config — guardar y notificar a los demás
           if (msg.config) {
             sharedConfig = msg.config;
+            saveConfigToFile();
             broadcastTo(ws, { type: 'configUpdate', config: sharedConfig });
-            console.log('[Config] Actualizada y sincronizada');
+            console.log('[Config] Actualizada y guardada en disco');
           }
           break;
 
         case 'uploadConfig':
-          // Primer dispositivo que conecta sube su config local si el server no tiene
+          // Solo acepta la config del cliente si el servidor no tiene ninguna
           if (!sharedConfig && msg.config) {
             sharedConfig = msg.config;
-            console.log('[Config] Config inicial recibida del primer cliente');
+            saveConfigToFile();
+            console.log('[Config] Config inicial recibida y guardada');
           }
-          // Responder con la config que quedó (la del servidor o la recién subida)
           ws.send(JSON.stringify({ type: 'configUpdate', config: sharedConfig }));
           break;
       }
