@@ -921,12 +921,16 @@ function wsConnect() {
       updateConnectionUI();
       addLog('Conectado al ESP32 en ' + ip);
       ws.send(JSON.stringify({ cmd: 'getStatus' }));
+      // El servidor maneja el polling de Telegram — el cliente lo detiene
+      if (tgPollingTimer) { clearInterval(tgPollingTimer); tgPollingTimer = null; }
     };
     ws.onclose = () => {
       state.connection.status = 'disconnected';
       updateConnectionUI();
       addLog('Desconectado del ESP32. Reconectando...');
       wsReconnectTimer = setTimeout(wsConnect, 4000);
+      // Reanudar polling en el cliente como fallback sin servidor
+      startTelegramPolling();
     };
     ws.onerror = () => {
       state.connection.status = 'error';
