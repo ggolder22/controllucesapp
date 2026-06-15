@@ -923,10 +923,27 @@ function wsConnect() {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        if (msg.type === 'status') {
+        if (msg.type === 'init') {
+          msg.relays.forEach((v, i) => { if (i < 8) state.channels[i].on = v; });
+          if (msg.hasConfig && msg.config) {
+            applyServerConfig(msg.config);
+          } else {
+            // Servidor sin config — subir la nuestra
+            ws.send(JSON.stringify({ cmd: 'uploadConfig', config: buildSyncConfig() }));
+          }
+          renderAll();
+          updateSubtitle();
+          addLog('Conectado al servidor · Config sincronizada');
+        } else if (msg.type === 'status') {
           msg.relays.forEach((v, i) => { if (i < 8) state.channels[i].on = v; });
           renderChannels();
           updateSubtitle();
+        } else if (msg.type === 'configUpdate') {
+          if (msg.config) {
+            applyServerConfig(msg.config);
+            renderAll();
+            addLog('Config actualizada desde otro dispositivo');
+          }
         }
       } catch(err) {}
     };
@@ -1078,7 +1095,7 @@ function renderChannels() {
     // Events
     div.querySelector('.channel-name').addEventListener('change', (e) => {
       state.channels[ch.id].name = e.target.value.trim() || `Canal ${ch.id+1}`;
-      saveState();
+      saveState(); syncConfig();
       renderChannelSettings();
     });
     div.querySelector(`[data-toggle="${ch.id}"]`).addEventListener('change', () => toggleChannel(ch.id));
@@ -1213,7 +1230,7 @@ function saveSceneModal() {
     state.scenes.push({ id: Date.now(), name, icon, channels, time, days });
   }
 
-  saveState();
+  saveState(); syncConfig();
   renderScenes();
   updateRuleSceneSelect();
   document.getElementById('modal-scene').classList.add('hidden');
@@ -1306,7 +1323,7 @@ function saveRuleModal() {
   } else {
     state.rules.push({ id: Date.now(), ...ruleData });
   }
-  saveState();
+  saveState(); syncConfig();
   renderRules();
   document.getElementById('modal-rule').classList.add('hidden');
 }
@@ -1397,7 +1414,7 @@ async function fetchSunData() {
       date: new Date().toDateString(),
     };
     updateSunUI();
-    saveState();
+    saveState(); syncConfig();
     addLog(`Sol: ↑ ${formatTime(sunrise)} ↓ ${formatTime(sunset)}`);
   } catch(e) {
     document.getElementById('sun-rise').textContent = 'Error';
@@ -1610,7 +1627,7 @@ function saveChannelModal() {
   state.channels[id].icon = icon;
   state.channels[id].color = color;
 
-  saveState();
+  saveState(); syncConfig();
   renderChannels();
   updateSubtitle();
   renderChannelSettings();
@@ -1642,7 +1659,7 @@ function toggleTheme() {
   state.theme = state.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', state.theme);
   document.getElementById('theme-btn').textContent = state.theme === 'dark' ? '🌙' : '☀️';
-  saveState();
+  saveState(); syncConfig();
 }
 
 function applyBgImage(src) {
@@ -1875,7 +1892,7 @@ function saveTelegramSettings() {
   const chatId = document.getElementById('tg-chatid').value.trim();
   const enabled = document.getElementById('tg-enabled').checked;
   state.telegram = { token, chatId, enabled };
-  saveState();
+  saveState(); syncConfig();
   startTelegramPolling();
   document.getElementById('tg-status').textContent = '✓ Guardado';
   setTimeout(() => document.getElementById('tg-status').textContent = '', 2000);
@@ -1938,6 +1955,53 @@ function importConfig(file) {
     } catch(err) { alert('Error al importar el archivo: ' + err.message); }
   };
   reader.readAsText(file);
+}
+
+// ── SINCRONIZACIÓN DE CONFIG CON SERVIDOR ────────────
+
+// Construye el objeto de config que se guarda en el servidor
+// (excluye bgImage por tamaño y connection.ip que es por dispositivo)
+function buildSyncConfig() {
+  return {
+    channels: state.channels.map(ch => ({ name: ch.name, icon: ch.icon, color: ch.color })),
+    scenes:   state.scenes,
+    rules:    state.rules,
+    location: state.location,
+    sun:      state.sun,
+    telegram: state.telegram,
+    theme:    state.theme,
+  };
+}
+
+// Aplica config recibida del servidor al estado local
+function applyServerConfig(config) {
+  if (config.channels) {
+    config.channels.forEach((ch, i) => {
+      if (state.channels[i]) {
+        state.channels[i].name  = ch.name  || state.channels[i].name;
+        state.channels[i].icon  = ch.icon  || state.channels[i].icon;
+        state.channels[i].color = ch.color || state.channels[i].color;
+      }
+    });
+  }
+  if (config.scenes)   state.scenes   = config.scenes;
+  if (config.rules)    state.rules    = config.rules;
+  if (config.location) state.location = config.location;
+  if (config.sun)      state.sun      = config.sun;
+  if (config.telegram) state.telegram = config.telegram;
+  if (config.theme) {
+    state.theme = config.theme;
+    document.documentElement.setAttribute('data-theme', state.theme);
+    document.getElementById('theme-btn').textContent = state.theme === 'dark' ? '🌙' : '☀️';
+  }
+  saveState(); // cache local
+}
+
+// Envía la config actualizada al servidor para que la distribuya
+function syncConfig() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ cmd: 'setConfig', config: buildSyncConfig() }));
+  }
 }
 
 // ── UTILS ────────────────────────────────────────────
